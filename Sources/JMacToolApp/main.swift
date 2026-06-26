@@ -1,0 +1,3 @@
+import JMacToolCore
+
+AppLauncher.run()
