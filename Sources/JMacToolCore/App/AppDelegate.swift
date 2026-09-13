@@ -4,7 +4,8 @@ import Foundation
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let cleaningModeController = CleaningModeController()
-    private let windowMonitor = WindowMonitor()
+    private let windowMonitor = FocusChangeMonitor()
+    private let proxyMenuController = ProxyMenuController()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let clearScreenMenuItem = NSMenuItem(title: "Clear Screen", action: #selector(clearScreen), keyEquivalent: "")
     private let inputChangeMenuItem = NSMenuItem()
@@ -50,6 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.delegate = self
         menu.addItem(clearScreenMenuItem)
         menu.addItem(inputChangeMenuItem)
+        menu.addItem(.separator())
+        menu.addItem(proxyMenuController.makeMenuItem())
         menu.addItem(.separator())
         menu.addItem(quitMenuItem)
         statusItem.menu = menu

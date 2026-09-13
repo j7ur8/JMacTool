@@ -21,6 +21,11 @@ let package = Package(
             name: "JMacTool",
             dependencies: ["JMacToolCore"],
             path: "Sources/JMacToolApp"
+        ),
+        .testTarget(
+            name: "JMacToolCoreTests",
+            dependencies: ["JMacToolCore"],
+            path: "Tests/JMacToolCoreTests"
         )
     ]
 )

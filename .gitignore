@@ -1,3 +1,14 @@
+# Swift Package Manager build artifacts
 .build/
+.swiftpm/
+*.o
+
+# Local build output (dist/JMacTool.app, zips)
 dist/
+
+# macOS junk
 .DS_Store
+
+# Editor / tooling
+*.tmp-*
+*.recovery-backup

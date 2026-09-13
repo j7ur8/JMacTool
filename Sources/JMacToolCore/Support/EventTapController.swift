@@ -1,17 +1,31 @@
 import CoreGraphics
 import Foundation
 
+/// Owns one CGEventTap: creates it, keeps its run-loop source alive, and
+/// re-enables the tap after the system disables it on timeout.
+///
+/// The `onEvent` closure returns the (unretained) event to pass through, or
+/// nil to delete the event; deleting only takes effect for `.defaultTap` taps.
 @MainActor
-final class KeyboardSuppressionController {
+final class EventTapController {
+    private let options: CGEventTapOptions
+    private let eventMask: CGEventMask
+    private let onEvent: (CGEvent) -> Unmanaged<CGEvent>?
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
 
-    func requestAccessIfNeeded() {
-        guard !CGPreflightListenEventAccess() else {
-            return
-        }
+    init(
+        options: CGEventTapOptions,
+        events: [CGEventType],
+        onEvent: @escaping (CGEvent) -> Unmanaged<CGEvent>?
+    ) {
+        self.options = options
+        self.eventMask = Self.combinedMask(for: events)
+        self.onEvent = onEvent
+    }
 
-        _ = CGRequestListenEventAccess()
+    var isRunning: Bool {
+        eventTap != nil
     }
 
     func start() {
@@ -21,30 +35,23 @@ final class KeyboardSuppressionController {
             return
         }
 
-        let mask = Self.eventMask(for: [
-            .keyDown,
-            .keyUp,
-            .flagsChanged,
-            .scrollWheel
-        ])
-
-        let callback: CGEventTapCallBack = { proxy, type, event, userInfo in
+        let callback: CGEventTapCallBack = { _, type, event, userInfo in
             guard let userInfo else {
                 return Unmanaged.passUnretained(event)
             }
 
-            let controller = Unmanaged<KeyboardSuppressionController>
+            let controller = Unmanaged<EventTapController>
                 .fromOpaque(userInfo)
                 .takeUnretainedValue()
 
-            return controller.handleEvent(proxy: proxy, type: type, event: event)
+            return controller.handleEvent(type: type, event: event)
         }
 
         guard let eventTap = CGEvent.tapCreate(
             tap: .cghidEventTap,
             place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
+            options: options,
+            eventsOfInterest: eventMask,
             callback: callback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
@@ -76,25 +83,19 @@ final class KeyboardSuppressionController {
         }
     }
 
-    private func handleEvent(
-        proxy: CGEventTapProxy,
-        type: CGEventType,
-        event: CGEvent
-    ) -> Unmanaged<CGEvent>? {
+    private func handleEvent(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
             return Unmanaged.passUnretained(event)
-        case .keyDown, .keyUp, .flagsChanged, .scrollWheel:
-            return nil
         default:
-            return Unmanaged.passUnretained(event)
+            return onEvent(event)
         }
     }
 
-    private static func eventMask(for eventTypes: [CGEventType]) -> CGEventMask {
+    private static func combinedMask(for eventTypes: [CGEventType]) -> CGEventMask {
         eventTypes.reduce(CGEventMask(0)) { partialResult, eventType in
             partialResult | (CGEventMask(1) << eventType.rawValue)
         }
