@@ -65,9 +65,49 @@ enum ProxyCLIInstaller {
     }
 }
 
+/// Injectable console for the proxy CLI so command handlers are testable.
+struct ProxyCLIIO: Sendable {
+    let writeStdout: @Sendable (String) -> Void
+    let writeStderr: @Sendable (String) -> Void
+    let stdinIsTTY: @Sendable () -> Bool
+    let stdoutIsTTY: @Sendable () -> Bool
+    let readLine: @Sendable () -> String?
+    let environment: [String: String]
+
+    static let live = ProxyCLIIO(
+        writeStdout: { FileHandle.standardOutput.write($0.data(using: .utf8)!) },
+        writeStderr: { FileHandle.standardError.write($0.data(using: .utf8)!) },
+        stdinIsTTY: { isatty(STDIN_FILENO) == 1 },
+        stdoutIsTTY: { isatty(STDOUT_FILENO) == 1 },
+        readLine: { Swift.readLine() },
+        environment: ProcessInfo.processInfo.environment
+    )
+}
+
+/// Everything a command handler needs: the store context, the program name it
+/// was invoked as, and the console.
+struct ProxyCLIInvocation {
+    let programName: String
+    let context: ProxyFileContext
+    let io: ProxyCLIIO
+
+    func usageError(_ message: String, _ usage: String) -> ProxyEngineError {
+        ProxyEngineError(message: message, usage: usage)
+    }
+
+    func print(_ text: String) {
+        io.writeStdout(text + "\n")
+    }
+
+    func printError(_ text: String) {
+        io.writeStderr(text + "\n")
+    }
+}
+
 /// Command-line interface for the integrated proxy manager. The commands and
 /// output strings mirror the jpmanager CLI so `~/.zshrc` integrations keep
-/// working through the `/usr/local/bin/jpmanager` shim.
+/// working through the `/usr/local/bin/jpmanager` shim. Dispatch, help, and
+/// usage text are generated from a single command table.
 public enum ProxyCLI {
     // MARK: - Entry
 
@@ -78,24 +118,25 @@ public enum ProxyCLI {
 
     @discardableResult
     public static func run(arguments: [String] = CommandLine.arguments) -> Int32 {
-        run(arguments: arguments, context: .live)
+        run(arguments: arguments, context: .live, io: .live)
     }
 
     @discardableResult
-    static func run(arguments: [String], context: ProxyFileContext) -> Int32 {
+    static func run(arguments: [String], context: ProxyFileContext, io: ProxyCLIIO) -> Int32 {
         let userArguments = Array(arguments.dropFirst().filter { !$0.hasPrefix("-psn") })
         let programName = programNameForUsage(arguments.first)
+        let invocation = ProxyCLIInvocation(programName: programName, context: context, io: io)
 
         do {
-            return try dispatch(userArguments, programName: programName, context: context)
+            return try dispatch(userArguments, invocation: invocation)
         } catch let error as ProxyEngineError {
-            FileHandle.standardError.write("\(error.message)\n".data(using: .utf8)!)
+            io.writeStderr("\(error.message)\n")
             if !error.usage.isEmpty {
-                FileHandle.standardError.write("\(error.usage)\n".data(using: .utf8)!)
+                io.writeStderr("\(error.usage)\n")
             }
             return error.exitCode
         } catch {
-            FileHandle.standardError.write("\(error)\n".data(using: .utf8)!)
+            io.writeStderr("\(error)\n")
             return 1
         }
     }
@@ -107,93 +148,140 @@ public enum ProxyCLI {
         return (argv0 as NSString).lastPathComponent
     }
 
-    private static func usageError(_ message: String, _ usage: String) -> ProxyEngineError {
-        ProxyEngineError(message: message, usage: usage)
+    // MARK: - Command table
+
+    private struct CommandSpec {
+        let name: String
+        let summary: String
+        let usageLines: (String) -> [String]
+        let run: (ProxyCLIInvocation, [String]) throws -> Int32
+    }
+
+    private static let proxyUsageLines: @Sendable (String) -> [String] = { programName in
+        [
+            "\(programName) proxy",
+            "\(programName) proxy add --name <name> [--http-proxy <url>] [--https-proxy <url>] [--socks5-proxy <url>] [--no-proxy <value>] [--force]",
+            "\(programName) proxy edit --name <existing-name> [--rename <new-name>] [--http-proxy <url>] [--https-proxy <url>] [--socks5-proxy <url>] [--no-proxy <value>] [--force]",
+            "\(programName) proxy remove <name> [--force]"
+        ]
+    }
+
+    private static var commands: [CommandSpec] {
+        [
+            CommandSpec(
+                name: "proxy",
+                summary: "Manage saved proxy profiles (interactive, or add/edit/remove)",
+                usageLines: proxyUsageLines,
+                run: { invocation, args in try handleProxyCommand(invocation, args) }
+            ),
+            CommandSpec(
+                name: "list",
+                summary: "Show every managed app with its current proxy state",
+                usageLines: { programName in ["\(programName) list [--json]"] },
+                run: { invocation, args in try handleListCommand(invocation, args) }
+            ),
+            CommandSpec(
+                name: "set",
+                summary: "Apply a saved proxy profile to an app",
+                usageLines: { programName in ["\(programName) set <app> <profile-name>"] },
+                run: { invocation, args in try handleSetCommand(invocation, args) }
+            ),
+            CommandSpec(
+                name: "unset",
+                summary: "Remove the managed proxy settings for an app",
+                usageLines: { programName in ["\(programName) unset <app> [--force]"] },
+                run: { invocation, args in try handleUnsetCommand(invocation, args) }
+            ),
+            CommandSpec(
+                name: "test",
+                summary: "Check whether an app config matches a saved profile",
+                usageLines: { programName in ["\(programName) test <app> <profile-name>"] },
+                run: { invocation, args in try handleTestCommand(invocation, args) }
+            ),
+            CommandSpec(
+                name: "config",
+                summary: "Interactively pick an app and apply a profile (TTY)",
+                usageLines: { programName in ["\(programName) config"] },
+                run: { invocation, _ in try handleConfigCommand(invocation) }
+            ),
+            CommandSpec(
+                name: "shell-init",
+                summary: "Print the zsh wrapper for instant session updates",
+                usageLines: { programName in ["\(programName) shell-init zsh"] },
+                run: { invocation, args in try handleShellInitCommand(invocation, args.first) }
+            ),
+            CommandSpec(
+                name: "shell-apply",
+                summary: "Print export/unset lines for the current session",
+                usageLines: { programName in ["\(programName) shell-apply zsh"] },
+                run: { invocation, args in try handleShellApplyCommand(invocation, args.first) }
+            ),
+            CommandSpec(
+                name: "login",
+                summary: "Control or report launch-at-login",
+                usageLines: { programName in ["\(programName) login <enable|disable|status> [--json]"] },
+                run: { invocation, args in try handleLoginCommand(invocation, args) }
+            ),
+            CommandSpec(
+                name: "install-cli",
+                summary: "Install the /usr/local/bin/jpmanager shim",
+                usageLines: { programName in ["\(programName) install-cli"] },
+                run: { invocation, _ in try handleInstallCLICommand(invocation) }
+            ),
+            CommandSpec(
+                name: "gui",
+                summary: "Show a hint about the menu bar app",
+                usageLines: { programName in ["\(programName) gui"] },
+                run: { invocation, _ in
+                    invocation.print("JMacTool is the menu bar app; its proxy menu lives in the JMacTool status item.")
+                    return 0
+                }
+            )
+        ]
     }
 
     private static func generalUsage(programName: String) -> String {
-        """
-        Usage: \(programName) proxy
-           or: \(programName) proxy add --name <name> [--http-proxy <url>] [--https-proxy <url>] [--socks5-proxy <url>] [--no-proxy <value>] [--force]
-           or: \(programName) proxy edit --name <existing-name> [--rename <new-name>] [--http-proxy <url>] [--https-proxy <url>] [--socks5-proxy <url>] [--no-proxy <value>] [--force]
-           or: \(programName) list [--json]
-           or: \(programName) set <app> <profile-name>
-           or: \(programName) unset <app> [--force]
-           or: \(programName) test <app> <profile-name>
-           or: \(programName) config
-           or: \(programName) shell-init zsh
-           or: \(programName) shell-apply zsh
-           or: \(programName) login <enable|disable|status> [--json]
-           or: \(programName) install-cli
-        """
+        let lines = commands.flatMap { $0.usageLines(programName) }
+        guard let first = lines.first else {
+            return ""
+        }
+        return (["Usage: \(first)"] + lines.dropFirst().map { "   or: \($0)" }).joined(separator: "\n")
     }
 
-    private static func dispatch(
-        _ arguments: [String],
-        programName: String,
-        context: ProxyFileContext
-    ) throws -> Int32 {
+    private static func dispatch(_ arguments: [String], invocation: ProxyCLIInvocation) throws -> Int32 {
         guard let command = arguments.first else {
-            throw usageError("", generalUsage(programName: programName))
+            throw invocation.usageError("", generalUsage(programName: invocation.programName))
         }
 
-        let optionArgs = Array(arguments.dropFirst())
-
-        switch command {
-        case "help", "--help", "-h":
-            print(generalUsage(programName: programName))
+        if command == "help" || command == "--help" || command == "-h" {
+            invocation.print(generalUsage(programName: invocation.programName))
             return 0
-
-        case "proxy":
-            return try handleProxyCommand(optionArgs, programName: programName, context: context)
-
-        case "list":
-            return try handleListCommand(optionArgs, context: context)
-
-        case "set":
-            return try handleSetCommand(optionArgs, programName: programName, context: context)
-
-        case "unset":
-            return try handleUnsetCommand(optionArgs, programName: programName, context: context)
-
-        case "test":
-            return try handleTestCommand(optionArgs, programName: programName, context: context)
-
-        case "config":
-            return try handleConfigCommand(context: context)
-
-        case "shell-init":
-            return try handleShellInitCommand(optionArgs.first)
-
-        case "shell-apply":
-            return try handleShellApplyCommand(optionArgs.first, context: context)
-
-        case "login":
-            return try handleLoginCommand(optionArgs)
-
-        case "gui":
-            print("JMacTool is the menu bar app; its proxy menu lives in the JMacTool status item.")
-            return 0
-
-        case "install-cli":
-            return try handleInstallCLICommand()
-
-        default:
-            throw usageError("Unknown command \"\(command)\".", generalUsage(programName: programName))
         }
+
+        guard let spec = commands.first(where: { $0.name == command }) else {
+            throw invocation.usageError(
+                "Unknown command \"\(command)\".",
+                generalUsage(programName: invocation.programName)
+            )
+        }
+
+        return try spec.run(invocation, Array(arguments.dropFirst()))
     }
 
     // MARK: - Shared helpers
 
-    private static var stdinIsTTY: Bool {
-        isatty(STDIN_FILENO) == 1
-    }
-
-    private static func parseWriteOptions(_ optionArgs: [String]) throws -> (profile: ProxyProfile, allowOverwrite: Bool, originalName: String) {
+    struct ParsedWriteOptions {
         var profile = ProxyProfile(name: "", state: .empty)
-        var seenKeys = Set<String>()
         var allowOverwrite = false
         var originalName = ""
+        /// Options the user actually passed; only these become edit updates.
+        var providedStateKeys: Set<String> = []
+    }
+
+    private static func parseWriteOptions(_ optionArgs: [String]) throws -> ParsedWriteOptions {
+        var parsed = ParsedWriteOptions()
+        let profile = parsed.profile
+        var seenKeys = Set<String>()
 
         var index = 0
         while index < optionArgs.count {
@@ -201,14 +289,14 @@ public enum ProxyCLI {
             let nextValue = index + 1 < optionArgs.count ? optionArgs[index + 1] : nil
 
             if option == "--force" {
-                allowOverwrite = true
+                parsed.allowOverwrite = true
                 index += 1
                 continue
             }
 
             func takeValue() throws -> String {
                 guard let nextValue else {
-                    throw usageError("Missing value for \(option).", "")
+                    throw ProxyEngineError(message: "Missing value for \(option).")
                 }
                 index += 1
                 return nextValue
@@ -217,53 +305,61 @@ public enum ProxyCLI {
             switch option {
             case "--name":
                 let value = try takeValue()
-                originalName = value
+                parsed.originalName = value
                 if !seenKeys.contains("name") {
-                    profile.name = value
+                    parsed.profile.name = value
                     seenKeys.insert("name")
                 }
             case "--rename":
                 let value = try takeValue()
-                profile.name = value
+                parsed.profile.name = value
                 seenKeys.insert("name")
             case "--http-proxy":
-                profile.state.httpProxy = try takeValue()
+                parsed.profile.state.httpProxy = try takeValue()
+                parsed.providedStateKeys.insert("httpProxy")
             case "--https-proxy":
-                profile.state.httpsProxy = try takeValue()
+                parsed.profile.state.httpsProxy = try takeValue()
+                parsed.providedStateKeys.insert("httpsProxy")
             case "--socks5-proxy":
-                profile.state.socks5Proxy = try takeValue()
+                parsed.profile.state.socks5Proxy = try takeValue()
+                parsed.providedStateKeys.insert("socks5Proxy")
             case "--no-proxy":
-                profile.state.noProxy = try takeValue()
+                parsed.profile.state.noProxy = try takeValue()
+                parsed.providedStateKeys.insert("noProxy")
             default:
-                throw usageError("Unknown option \"\(option)\".", "")
+                throw ProxyEngineError(message: "Unknown option \"\(option)\".")
             }
 
             index += 1
         }
 
-        return (profile, allowOverwrite, originalName)
+        return parsed
     }
 
-    private static func printProfileDetails(_ profile: ProxyProfile) {
-        print("Name: \(profile.name)")
-        print("HTTP: \(profile.state.httpProxy.isEmpty ? "-" : profile.state.httpProxy)")
-        print("HTTPS: \(profile.state.httpsProxy.isEmpty ? "-" : profile.state.httpsProxy)")
-        print("SOCKS5: \(profile.state.socks5Proxy.isEmpty ? "-" : profile.state.socks5Proxy)")
+    private static func printProfileDetails(_ invocation: ProxyCLIInvocation, _ profile: ProxyProfile) {
+        invocation.print("Name: \(profile.name)")
+        invocation.print("HTTP: \(profile.state.httpProxy.isEmpty ? "-" : profile.state.httpProxy)")
+        invocation.print("HTTPS: \(profile.state.httpsProxy.isEmpty ? "-" : profile.state.httpsProxy)")
+        invocation.print("SOCKS5: \(profile.state.socks5Proxy.isEmpty ? "-" : profile.state.socks5Proxy)")
     }
 
-    private static func interactiveSelect(title: String, items: [String]) -> Int? {
-        guard stdinIsTTY else {
+    private static func interactiveSelect(
+        _ invocation: ProxyCLIInvocation,
+        title: String,
+        items: [String]
+    ) -> Int? {
+        guard invocation.io.stdinIsTTY() else {
             return nil
         }
 
-        print(title)
+        invocation.io.writeStdout(title + "\n")
         for (index, item) in items.enumerated() {
-            print("  \(index + 1). \(item)")
+            invocation.io.writeStdout("  \(index + 1). \(item)\n")
         }
-        print("  0. Cancel")
-        print("Enter a number: ", terminator: "")
+        invocation.io.writeStdout("  0. Cancel\n")
+        invocation.io.writeStdout("Enter a number: ")
 
-        guard let line = readLine()?.trimmingCharacters(in: .whitespaces),
+        guard let line = invocation.io.readLine()?.trimmingCharacters(in: .whitespaces),
               let number = Int(line),
               number >= 0,
               number <= items.count else {
@@ -272,10 +368,10 @@ public enum ProxyCLI {
         return number == 0 ? nil : number - 1
     }
 
-    private static func promptInput(_ label: String, allowEmpty: Bool) -> String? {
+    private static func promptInput(_ invocation: ProxyCLIInvocation, _ label: String, allowEmpty: Bool) -> String? {
         while true {
-            print("\(label): ", terminator: "")
-            guard let line = readLine() else {
+            invocation.io.writeStdout("\(label): ")
+            guard let line = invocation.io.readLine() else {
                 return nil
             }
             let value = line.trimmingCharacters(in: .whitespaces)
@@ -285,41 +381,40 @@ public enum ProxyCLI {
         }
     }
 
-    private static func promptConfirm(_ question: String) -> Bool {
-        print("\(question) [y/N]: ", terminator: "")
-        guard let line = readLine()?.trimmingCharacters(in: .whitespaces).lowercased() else {
+    private static func promptConfirm(_ invocation: ProxyCLIInvocation, _ question: String) -> Bool {
+        invocation.io.writeStdout("\(question) [y/N]: ")
+        guard let line = invocation.io.readLine()?.trimmingCharacters(in: .whitespaces).lowercased() else {
             return false
         }
         return line == "y" || line == "yes"
     }
 
-    private static func maybePrintZshShellHookHint() {
-        guard isatty(STDOUT_FILENO) == 1,
-              ProcessInfo.processInfo.environment["JPMANAGER_ZSH_SHELL_HOOK"] != "1" else {
+    private static func maybePrintZshShellHookHint(_ invocation: ProxyCLIInvocation) {
+        guard invocation.io.stdoutIsTTY(),
+              invocation.io.environment["JPMANAGER_ZSH_SHELL_HOOK"] != "1" else {
             return
         }
 
-        FileHandle.standardError.write(
-            "Current shell session was not updated. Run `eval \"$(\(ProxyConstants.legacyCommandName) shell-init zsh)\"` once to make `\(ProxyConstants.legacyCommandName) set zsh` and `\(ProxyConstants.legacyCommandName) unset zsh` apply immediately in the current zsh shell.\n"
-                .data(using: .utf8)!
+        invocation.printError(
+            "Current shell session was not updated. Run `eval \"$(\(ProxyConstants.legacyCommandName) shell-init zsh)\"` once to make `\(ProxyConstants.legacyCommandName) set zsh` and `\(ProxyConstants.legacyCommandName) unset zsh` apply immediately in the current zsh shell."
         )
     }
 
     // MARK: - proxy
 
-    private static func handleProxyCommand(_ arguments: [String], programName: String, context: ProxyFileContext) throws -> Int32 {
+    private static func handleProxyCommand(_ invocation: ProxyCLIInvocation, _ arguments: [String]) throws -> Int32 {
+        let proxyUsage = proxyUsageLines(invocation.programName).joined(separator: "\n")
+
         guard let action = arguments.first else {
-            return try handleInteractiveProxyCommand(context: context)
+            return try handleInteractiveProxyCommand(invocation)
         }
 
-        let proxyUsage = """
-        Usage: \(programName) proxy
-           or: \(programName) proxy add --name <name> [--http-proxy <url>] [--https-proxy <url>] [--socks5-proxy <url>] [--no-proxy <value>] [--force]
-           or: \(programName) proxy edit --name <existing-name> [--rename <new-name>] [--http-proxy <url>] [--https-proxy <url>] [--socks5-proxy <url>] [--no-proxy <value>] [--force]
-        """
+        guard ["add", "edit", "remove"].contains(action) else {
+            throw invocation.usageError("Unknown proxy action \"\(action)\".", proxyUsage)
+        }
 
-        guard action == "add" || action == "edit" else {
-            throw usageError("Unknown proxy action \"\(action)\".", proxyUsage)
+        if action == "remove" {
+            return try handleProxyRemoveCommand(invocation, Array(arguments.dropFirst()))
         }
 
         let parsed = try parseWriteOptions(Array(arguments.dropFirst()))
@@ -327,48 +422,83 @@ public enum ProxyCLI {
         if action == "add" {
             let saved = try ProfileStore.saveProxyProfile(
                 parsed.profile,
-                context: context,
+                context: invocation.context,
                 allowOverwrite: parsed.allowOverwrite
             )
-            print("Saved proxy profile \"\(saved.profile.name)\".")
+            invocation.print("Saved proxy profile \"\(saved.profile.name)\".")
             return 0
         }
 
         guard !parsed.originalName.isEmpty else {
-            throw usageError("Missing value for --name.", "")
+            throw invocation.usageError("Missing value for --name.", "")
         }
 
+        // Only the options the user passed become updates, mirroring the
+        // original hasOwnProperty semantics.
         let updates = ProfileStore.ProxyProfileUpdates(
             name: parsed.profile.name.isEmpty ? nil : parsed.profile.name,
-            httpProxy: parsed.profile.state.httpProxy,
-            httpsProxy: parsed.profile.state.httpsProxy,
-            socks5Proxy: parsed.profile.state.socks5Proxy,
-            noProxy: parsed.profile.state.noProxy
+            httpProxy: parsed.providedStateKeys.contains("httpProxy") ? parsed.profile.state.httpProxy : nil,
+            httpsProxy: parsed.providedStateKeys.contains("httpsProxy") ? parsed.profile.state.httpsProxy : nil,
+            socks5Proxy: parsed.providedStateKeys.contains("socks5Proxy") ? parsed.profile.state.socks5Proxy : nil,
+            noProxy: parsed.providedStateKeys.contains("noProxy") ? parsed.profile.state.noProxy : nil
         )
         let saved = try ProfileStore.editProxyProfile(
             parsed.originalName,
             updates: updates,
-            context: context,
+            context: invocation.context,
             allowOverwrite: parsed.allowOverwrite
         )
-        print("Saved proxy profile \"\(saved.profile.name)\".")
+        invocation.print("Saved proxy profile \"\(saved.profile.name)\".")
         return 0
     }
 
-    private static func handleInteractiveProxyCommand(context: ProxyFileContext) throws -> Int32 {
-        guard stdinIsTTY else {
-            throw usageError(
-                "Interactive mode requires a TTY. Use `\("jpmanager") proxy add` or `proxy edit` instead.",
+    private static func handleProxyRemoveCommand(_ invocation: ProxyCLIInvocation, _ arguments: [String]) throws -> Int32 {
+        let usage = "Usage: \(invocation.programName) proxy remove <name> [--force]"
+
+        guard let profileName = arguments.first, !profileName.hasPrefix("--") else {
+            throw invocation.usageError("", usage)
+        }
+
+        let unknownArgs = arguments.dropFirst().filter { $0 != "--force" }
+        if !unknownArgs.isEmpty {
+            throw invocation.usageError("Unknown option(s): \(unknownArgs.joined(separator: ", "))", usage)
+        }
+
+        let force = arguments.contains("--force")
+        if !force {
+            guard invocation.io.stdinIsTTY() else {
+                throw invocation.usageError(
+                    "Removing a proxy profile is destructive. Re-run with `\(invocation.programName) proxy remove \(profileName) --force` to remove anyway.",
+                    ""
+                )
+            }
+
+            guard promptConfirm(invocation, "Remove proxy profile \"\(profileName)\"?") else {
+                invocation.printError("Aborted.")
+                return 1
+            }
+        }
+
+        let removed = try ProfileStore.removeProxyProfile(profileName, context: invocation.context)
+        invocation.print("Removed proxy profile \"\(removed.profile.name)\".")
+        return 0
+    }
+
+    private static func handleInteractiveProxyCommand(_ invocation: ProxyCLIInvocation) throws -> Int32 {
+        guard invocation.io.stdinIsTTY() else {
+            throw invocation.usageError(
+                "Interactive mode requires a TTY. Use `\(invocation.programName) proxy add`, `proxy edit`, or `proxy remove` instead.",
                 ""
             )
         }
 
-        let profiles = ProfileStore.ensureStore(context: context)
+        let profiles = ProfileStore.ensureStore(context: invocation.context)
         let items = profiles.map { stored in
             "\(stored.profile.name)  \(ProxyDisplay.describe(stored.profile.state))"
         } + ["Add one proxy"]
 
         guard let selected = interactiveSelect(
+            invocation,
             title: profiles.isEmpty ? "No proxy profiles found.\n" : "Saved proxy profiles.\n",
             items: items
         ) else {
@@ -376,23 +506,23 @@ public enum ProxyCLI {
         }
 
         if selected < profiles.count {
-            printProfileDetails(profiles[selected].profile)
+            printProfileDetails(invocation, profiles[selected].profile)
             return 0
         }
 
-        guard let name = promptInput("Config name", allowEmpty: false),
-              let httpProxy = promptInput("http_proxy", allowEmpty: true),
-              let httpsProxy = promptInput("https_proxy", allowEmpty: true),
-              let socks5Proxy = promptInput("socks5_proxy", allowEmpty: true),
-              let noProxy = promptInput("no_proxy", allowEmpty: true) else {
-            FileHandle.standardError.write("Aborted.\n".data(using: .utf8)!)
+        guard let name = promptInput(invocation, "Config name", allowEmpty: false),
+              let httpProxy = promptInput(invocation, "http_proxy", allowEmpty: true),
+              let httpsProxy = promptInput(invocation, "https_proxy", allowEmpty: true),
+              let socks5Proxy = promptInput(invocation, "socks5_proxy", allowEmpty: true),
+              let noProxy = promptInput(invocation, "no_proxy", allowEmpty: true) else {
+            invocation.printError("Aborted.")
             return 1
         }
 
         var allowOverwrite = false
         if ProfileStore.findProfileByName(profiles, name) != nil {
-            guard promptConfirm("Proxy profile \"\(name)\" already exists. Override it?") else {
-                FileHandle.standardError.write("Aborted.\n".data(using: .utf8)!)
+            guard promptConfirm(invocation, "Proxy profile \"\(name)\" already exists. Override it?") else {
+                invocation.printError("Aborted.")
                 return 1
             }
             allowOverwrite = true
@@ -404,76 +534,74 @@ public enum ProxyCLI {
         profile.state.socks5Proxy = socks5Proxy
         profile.state.noProxy = noProxy
 
-        let saved = try ProfileStore.saveProxyProfile(profile, context: context, allowOverwrite: allowOverwrite)
-        print("Saved proxy profile \"\(saved.profile.name)\".")
+        let saved = try ProfileStore.saveProxyProfile(profile, context: invocation.context, allowOverwrite: allowOverwrite)
+        invocation.print("Saved proxy profile \"\(saved.profile.name)\".")
         return 0
     }
 
     // MARK: - list
 
-    private static func handleListCommand(_ arguments: [String], context: ProxyFileContext) throws -> Int32 {
+    private static func handleListCommand(_ invocation: ProxyCLIInvocation, _ arguments: [String]) throws -> Int32 {
         let unknownArgs = arguments.filter { $0 != "--json" }
         if !unknownArgs.isEmpty {
-            throw usageError(
+            throw invocation.usageError(
                 "Unknown option(s): \(unknownArgs.joined(separator: ", "))",
-                "Usage: jpmanager list [--json]"
+                "Usage: \(invocation.programName) list [--json]"
             )
         }
 
-        let data = ProxyDashboard.collect(context: context)
+        let data = ProxyDashboard.collect(context: invocation.context)
 
         if arguments.contains("--json") {
-            let json = ProxyDashboard.jsonData(data)
-            FileHandle.standardOutput.write(json)
-            FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+            invocation.io.writeStdout(String(data: ProxyDashboard.jsonData(data), encoding: .utf8)! + "\n")
             return 0
         }
 
-        FileHandle.standardOutput.write(ProxyDashboard.renderListTable(data.apps).data(using: .utf8)!)
+        invocation.io.writeStdout(ProxyDashboard.renderListTable(data.apps))
         return 0
     }
 
     // MARK: - set / unset / test
 
-    private static func handleSetCommand(_ arguments: [String], programName: String, context: ProxyFileContext) throws -> Int32 {
+    private static func handleSetCommand(_ invocation: ProxyCLIInvocation, _ arguments: [String]) throws -> Int32 {
         guard arguments.count >= 2 else {
-            throw usageError("", "Usage: \(programName) set <app> <profile-name>")
+            throw invocation.usageError("", "Usage: \(invocation.programName) set <app> <profile-name>")
         }
 
         let result = try ProxyOperations.configureAppWithProfile(
-            context: context,
+            context: invocation.context,
             appName: arguments[0],
             profileName: arguments[1]
         )
 
-        let targetSuffix = context.fileExists(result.way) ? " in \(result.way)" : ""
-        print("Configured \(result.selection.requestedName) with proxy profile \"\(result.profile.name)\"\(targetSuffix).")
+        let targetSuffix = invocation.context.fileExists(result.way) ? " in \(result.way)" : ""
+        invocation.print("Configured \(result.selection.requestedName) with proxy profile \"\(result.profile.name)\"\(targetSuffix).")
 
         if result.selection.canonicalName == "zsh" || result.selection.canonicalName == ProxyConstants.environmentAppName {
-            maybePrintZshShellHookHint()
+            maybePrintZshShellHookHint(invocation)
         }
         return 0
     }
 
-    private static func handleUnsetCommand(_ arguments: [String], programName: String, context: ProxyFileContext) throws -> Int32 {
+    private static func handleUnsetCommand(_ invocation: ProxyCLIInvocation, _ arguments: [String]) throws -> Int32 {
         guard let appName = arguments.first else {
-            throw usageError("", "Usage: \(programName) unset <app> [--force]")
+            throw invocation.usageError("", "Usage: \(invocation.programName) unset <app> [--force]")
         }
 
         let optionArgs = Array(arguments.dropFirst())
         let unknownArgs = optionArgs.filter { $0 != "--force" }
         if !unknownArgs.isEmpty {
-            throw usageError(
+            throw invocation.usageError(
                 "Unknown option(s): \(unknownArgs.joined(separator: ", "))",
-                "Usage: \(programName) unset <app> [--force]"
+                "Usage: \(invocation.programName) unset <app> [--force]"
             )
         }
 
-        let interactiveConfirmation: ((ProxyState, String) -> Bool)? = stdinIsTTY
+        let interactiveConfirmation: ((ProxyState, String) -> Bool)? = invocation.io.stdinIsTTY()
             ? { current, subjectLabel in
                 let warning = "Current \(subjectLabel) proxy settings (\(ProxyDisplay.describe(current))) do not match any saved jpmanager profile. They may have been modified by another app."
-                if !promptConfirm("\(warning) Unset anyway?") {
-                    FileHandle.standardError.write("Aborted.\n".data(using: .utf8)!)
+                if !promptConfirm(invocation, "\(warning) Unset anyway?") {
+                    invocation.printError("Aborted.")
                     return false
                 }
                 return true
@@ -481,7 +609,7 @@ public enum ProxyCLI {
             : nil
 
         let result = try ProxyOperations.clearAppProxy(
-            context: context,
+            context: invocation.context,
             appName: appName,
             force: optionArgs.contains("--force"),
             confirmUnsafeUnset: interactiveConfirmation
@@ -491,38 +619,36 @@ public enum ProxyCLI {
             return 1
         }
 
-        print("Unset proxy settings for \(result.selection.requestedName) in \(result.selection.target.wayLabel).")
+        invocation.print("Unset proxy settings for \(result.selection.requestedName) in \(result.selection.target.wayLabel).")
 
         if result.selection.canonicalName == "zsh" || result.selection.canonicalName == ProxyConstants.environmentAppName {
-            maybePrintZshShellHookHint()
+            maybePrintZshShellHookHint(invocation)
         }
         return 0
     }
 
-    private static func handleTestCommand(_ arguments: [String], programName: String, context: ProxyFileContext) throws -> Int32 {
+    private static func handleTestCommand(_ invocation: ProxyCLIInvocation, _ arguments: [String]) throws -> Int32 {
         guard arguments.count >= 2 else {
-            throw usageError("", "Usage: \(programName) test <app> <profile-name>")
+            throw invocation.usageError("", "Usage: \(invocation.programName) test <app> <profile-name>")
         }
 
         let result = try ProxyOperations.testAppProfile(
-            context: context,
+            context: invocation.context,
             appName: arguments[0],
             profileName: arguments[1]
         )
 
         if result.mismatches.isEmpty {
-            print("OK: \(result.selection.requestedName) matches proxy profile \"\(result.profile.name)\" in \(result.way).")
+            invocation.print("OK: \(result.selection.requestedName) matches proxy profile \"\(result.profile.name)\" in \(result.way).")
             return 0
         }
 
-        FileHandle.standardError.write(
-            "Mismatch: \(result.selection.requestedName) config in \(result.way) does not match proxy profile \"\(result.profile.name)\".\n"
-                .data(using: .utf8)!
+        invocation.printError(
+            "Mismatch: \(result.selection.requestedName) config in \(result.way) does not match proxy profile \"\(result.profile.name)\"."
         )
         for mismatch in result.mismatches {
-            FileHandle.standardError.write(
-                "\(mismatch.key.rawValue): expected \(mismatch.expected.isEmpty ? "-" : mismatch.expected), actual \(mismatch.actual.isEmpty ? "-" : mismatch.actual)\n"
-                    .data(using: .utf8)!
+            invocation.printError(
+                "\(mismatch.key.rawValue): expected \(mismatch.expected.isEmpty ? "-" : mismatch.expected), actual \(mismatch.actual.isEmpty ? "-" : mismatch.actual)"
             )
         }
         return 1
@@ -530,80 +656,80 @@ public enum ProxyCLI {
 
     // MARK: - config (interactive selector)
 
-    private static func handleConfigCommand(context: ProxyFileContext) throws -> Int32 {
-        guard stdinIsTTY else {
-            throw usageError("Interactive mode requires a TTY.", "")
+    private static func handleConfigCommand(_ invocation: ProxyCLIInvocation) throws -> Int32 {
+        guard invocation.io.stdinIsTTY() else {
+            throw invocation.usageError("Interactive mode requires a TTY.", "")
         }
 
         while true {
-            let data = ProxyDashboard.collect(context: context)
+            let data = ProxyDashboard.collect(context: invocation.context)
             let items = data.apps.map { "\($0.name): \($0.proxyDisplay)" } + ["Exit"]
 
-            guard let selectedIndex = interactiveSelect(title: "App proxy configuration\n", items: items),
+            guard let selectedIndex = interactiveSelect(invocation, title: "App proxy configuration\n", items: items),
                   selectedIndex < data.apps.count else {
                 return 0
             }
 
             let app = data.apps[selectedIndex]
             guard !data.profiles.isEmpty else {
-                FileHandle.standardError.write("No proxy profiles found. Run `jpmanager proxy` first.\n".data(using: .utf8)!)
+                invocation.printError("No proxy profiles found. Run `\(invocation.programName) proxy` first.")
                 return 1
             }
 
             let profileItems = data.profiles.map { "\($0.name)  \($0.proxyDisplay)" }
-            guard let profileIndex = interactiveSelect(title: "Choose a proxy for \(app.name)\n", items: profileItems) else {
+            guard let profileIndex = interactiveSelect(invocation, title: "Choose a proxy for \(app.name)\n", items: profileItems) else {
                 continue
             }
 
             let selectedProfile = data.profiles[profileIndex]
-            let stored = try ProxyOperations.findProxyProfileByName(context: context, profileName: selectedProfile.name)
-            try ProxyOperations.resolveAppSelection(app.name, context: context).target.apply(stored.state)
-            print("Configured \(app.name) with proxy profile \"\(selectedProfile.name)\".")
+            let stored = try ProxyOperations.findProxyProfileByName(context: invocation.context, profileName: selectedProfile.name)
+            try ProxyOperations.resolveAppSelection(app.name, context: invocation.context).target.apply(stored.state)
+            invocation.print("Configured \(app.name) with proxy profile \"\(selectedProfile.name)\".")
         }
     }
 
     // MARK: - shell hooks
 
-    private static func handleShellInitCommand(_ shellName: String?) throws -> Int32 {
+    private static func handleShellInitCommand(_ invocation: ProxyCLIInvocation, _ shellName: String?) throws -> Int32 {
         guard let shellName else {
-            FileHandle.standardError.write("Usage: jpmanager shell-init <shell>\n".data(using: .utf8)!)
+            invocation.printError("Usage: \(invocation.programName) shell-init <shell>")
             return 1
         }
 
         guard shellName == "zsh" else {
-            FileHandle.standardError.write("Unknown shell \"\(shellName)\". Available shells: zsh\n".data(using: .utf8)!)
+            invocation.printError("Unknown shell \"\(shellName)\". Available shells: zsh")
             return 1
         }
 
-        print(ProxyShellCommands.buildZshShellInitScript(invocationCommand: ProxyShellCommands.currentInvocationCommand()), terminator: "")
+        invocation.io.writeStdout(ProxyShellCommands.buildZshShellInitScript(invocationCommand: ProxyShellCommands.currentInvocationCommand()))
         return 0
     }
 
-    private static func handleShellApplyCommand(_ shellName: String?, context: ProxyFileContext) throws -> Int32 {
+    private static func handleShellApplyCommand(_ invocation: ProxyCLIInvocation, _ shellName: String?) throws -> Int32 {
         guard let shellName else {
-            FileHandle.standardError.write("Usage: jpmanager shell-apply <shell>\n".data(using: .utf8)!)
+            invocation.printError("Usage: \(invocation.programName) shell-apply <shell>")
             return 1
         }
 
         guard shellName == "zsh" else {
-            FileHandle.standardError.write("Unknown shell \"\(shellName)\". Available shells: zsh\n".data(using: .utf8)!)
+            invocation.printError("Unknown shell \"\(shellName)\". Available shells: zsh")
             return 1
         }
 
-        guard let zshTarget = ProxyTargetLoader.load(context: context).targets.first(where: { $0.name == "zsh" }) else {
-            FileHandle.standardError.write("Target \"zsh\" is not available.\n".data(using: .utf8)!)
+        guard let zshTarget = ProxyTargetLoader.load(context: invocation.context).targets.first(where: { $0.name == "zsh" }) else {
+            invocation.printError("Target \"zsh\" is not available.")
             return 1
         }
 
-        print(ProxyShellCommands.buildZshCurrentShellCommands(zshTarget.currentState()), terminator: "")
+        invocation.io.writeStdout(ProxyShellCommands.buildZshCurrentShellCommands(zshTarget.currentState()))
         return 0
     }
 
     // MARK: - login
 
-    private static func handleLoginCommand(_ arguments: [String]) throws -> Int32 {
+    private static func handleLoginCommand(_ invocation: ProxyCLIInvocation, _ arguments: [String]) throws -> Int32 {
         guard let action = arguments.first else {
-            throw usageError("", "Usage: jpmanager login <enable|disable|status> [--json]")
+            throw invocation.usageError("", "Usage: \(invocation.programName) login <enable|disable|status> [--json]")
         }
 
         let wantsJSON = arguments.contains("--json")
@@ -611,18 +737,18 @@ public enum ProxyCLI {
         switch action {
         case "enable":
             if let error = ProxyLoginService.enable() {
-                FileHandle.standardError.write("Failed to enable launch at login: \(error)\n".data(using: .utf8)!)
+                invocation.printError("Failed to enable launch at login: \(error)")
                 return 1
             }
-            print("Launch at login enabled.")
+            invocation.print("Launch at login enabled.")
             return 0
 
         case "disable":
             if let error = ProxyLoginService.disable() {
-                FileHandle.standardError.write("Failed to disable launch at login: \(error)\n".data(using: .utf8)!)
+                invocation.printError("Failed to disable launch at login: \(error)")
                 return 1
             }
-            print("Launch at login disabled.")
+            invocation.print("Launch at login disabled.")
             return 0
 
         case "status":
@@ -630,28 +756,30 @@ public enum ProxyCLI {
             if wantsJSON {
                 let payload: [String: Any] = ["enabled": status == .enabled, "status": status.rawValue]
                 let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
-                FileHandle.standardOutput.write(data)
-                FileHandle.standardOutput.write("\n".data(using: .utf8)!)
+                invocation.io.writeStdout(String(data: data, encoding: .utf8)! + "\n")
             } else {
-                print("Launch at login: \(status.rawValue)")
+                invocation.print("Launch at login: \(status.rawValue)")
             }
             return 0
 
         default:
-            throw usageError("Unknown login action \"\(action)\".", "Usage: jpmanager login <enable|disable|status> [--json]")
+            throw invocation.usageError(
+                "Unknown login action \"\(action)\".",
+                "Usage: \(invocation.programName) login <enable|disable|status> [--json]"
+            )
         }
     }
 
     // MARK: - install-cli
 
-    private static func handleInstallCLICommand() throws -> Int32 {
+    private static func handleInstallCLICommand(_ invocation: ProxyCLIInvocation) throws -> Int32 {
         switch try ProxyCLIInstaller.install() {
         case .alreadyInstalled:
-            print("The \(ProxyCLIInstaller.shimPath) command shim is already up to date.")
+            invocation.print("The \(ProxyCLIInstaller.shimPath) command shim is already up to date.")
         case .installed:
-            print("Installed \(ProxyCLIInstaller.shimPath).")
+            invocation.print("Installed \(ProxyCLIInstaller.shimPath).")
         case .replaced:
-            print("Replaced \(ProxyCLIInstaller.shimPath).")
+            invocation.print("Replaced \(ProxyCLIInstaller.shimPath).")
         }
         return 0
     }

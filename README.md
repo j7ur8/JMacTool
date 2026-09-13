@@ -59,6 +59,7 @@ Supported v1 handlers: `ini-root`, `ini-section`, `managed-shell-env`, `line-kv`
 JMacTool proxy                       # interactive profile browser (TTY)
 JMacTool proxy add --name <name> [--http-proxy <url>] [--https-proxy <url>] [--socks5-proxy <url>] [--no-proxy <value>] [--force]
 JMacTool proxy edit --name <existing-name> [--rename <new-name>] [--http-proxy <url>] [--https-proxy <url>] [--socks5-proxy <url>] [--no-proxy <value>] [--force]
+JMacTool proxy remove <name> [--force]
 JMacTool list [--json]
 JMacTool set <app> <profile-name>
 JMacTool unset <app> [--force]

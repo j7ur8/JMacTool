@@ -148,6 +148,21 @@ enum ProfileStore {
         return profiles.first(where: { $0.profile.name == normalizedName })
     }
 
+    @discardableResult
+    static func removeProxyProfile(_ profileName: String, context: ProxyFileContext) throws -> StoredProfile {
+        let profiles = ensureStore(context: context)
+        guard let stored = findProfileByName(profiles, profileName) else {
+            throw ProxyEngineError(message: "Proxy profile \"\(profileName.trimmingCharacters(in: .whitespaces))\" does not exist.")
+        }
+
+        do {
+            try FileManager.default.removeItem(atPath: stored.filePath)
+        } catch {
+            throw ProxyEngineError(message: "Failed to remove \(stored.filePath): \(error.localizedDescription)")
+        }
+        return stored
+    }
+
     // MARK: - Validation and conflict checks
 
     private static func validateWritableProxyProfile(_ profile: ProxyProfile) throws {
@@ -246,7 +261,7 @@ enum ProfileStore {
             .first(where: { index, stored in stored.profile.name == nextProfile.name && index != existingIndex })
             .map(\.offset)
 
-        if let conflictingIndex, !allowOverwrite {
+        if conflictingIndex != nil, !allowOverwrite {
             throw ProxyEngineError(
                 message: "Proxy profile \"\(nextProfile.name)\" already exists. Re-run with --force to override."
             )
