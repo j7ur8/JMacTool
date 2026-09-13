@@ -53,8 +53,8 @@ final class ProxyCLITests: XCTestCase {
         XCTAssertEqual(exitCode, 0)
         XCTAssertTrue(buffer.stdout.contains("Usage: JMacTool proxy"))
         XCTAssertTrue(buffer.stdout.contains("proxy remove <name>"))
-        XCTAssertTrue(buffer.stdout.contains("Usage: JMacTool list [--json]"))
-        XCTAssertTrue(buffer.stdout.contains("Usage: JMacTool install-cli"))
+        XCTAssertTrue(buffer.stdout.contains("   or: JMacTool list [--json]"))
+        XCTAssertTrue(buffer.stdout.contains("   or: JMacTool install-cli"))
     }
 
     func testNoArgumentsPrintsUsageAndFails() {
