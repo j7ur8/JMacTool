@@ -49,12 +49,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         let menu = NSMenu()
         menu.delegate = self
+        menu.autoenablesItems = false
         menu.addItem(clearScreenMenuItem)
         menu.addItem(inputChangeMenuItem)
         menu.addItem(.separator())
-        menu.addItem(proxyMenuController.makeMenuItem())
-        menu.addItem(.separator())
         menu.addItem(quitMenuItem)
+        proxyMenuController.install(into: menu, before: quitMenuItem)
         statusItem.menu = menu
     }
 
@@ -149,6 +149,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         refreshUI()
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        proxyMenuController.refreshDynamicSection()
     }
 
     private func showInputChangeAccessibilityAlertIfNeeded() {

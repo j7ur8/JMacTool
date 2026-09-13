@@ -1,95 +1,97 @@
 import AppKit
 import ServiceManagement
 
-/// Builds and maintains the Proxy section of the JMacTool menu bar menu:
-/// managed apps with per-app profile switching, saved profile management,
-/// launch-at-login, and the CLI shim installer.
+/// Owns the proxy-related sections of the JMacTool main menu: managed apps
+/// with per-app profile switching and saved profiles are rendered directly in
+/// the main menu, Launch at Login is a standalone item, and the Proxy submenu
+/// keeps only the "jpmanager" CLI installer.
 @MainActor
-final class ProxyMenuController: NSObject, NSMenuDelegate {
-    private static let context = ProxyFileContext.live
-
+final class ProxyMenuController: NSObject {
+    private let context: ProxyFileContext
     private var profileFormWindow: ProfileFormWindow?
+    private weak var mainMenu: NSMenu?
+    private weak var quitItem: NSMenuItem?
+    private var dynamicItems: [NSMenuItem] = []
 
-    func makeMenuItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Proxy", action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-        submenu.delegate = self
-        submenu.autoenablesItems = false
-        item.submenu = submenu
-        return item
+    init(context: ProxyFileContext = .live) {
+        self.context = context
+    }
+
+    /// Registers the dynamic proxy sections that live directly in the main
+    /// menu, inserted before the Quit item.
+    func install(into menu: NSMenu, before quitItem: NSMenuItem) {
+        mainMenu = menu
+        self.quitItem = quitItem
+        refreshDynamicSection()
+    }
+
+    /// Rebuilds apps/profiles state; called every time the menu opens.
+    func refreshDynamicSection() {
+        guard let mainMenu, let quitItem else {
+            return
+        }
+
+        for item in dynamicItems {
+            mainMenu.removeItem(item)
+        }
+
+        dynamicItems = makeDynamicItems()
+        let quitIndex = mainMenu.index(of: quitItem)
+        guard quitIndex != NSNotFound else {
+            return
+        }
+
+        for (offset, item) in dynamicItems.enumerated() {
+            mainMenu.insertItem(item, at: quitIndex + offset)
+        }
     }
 
     // MARK: - Menu building
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        rebuild(menu)
-    }
-
-    private func rebuild(_ menu: NSMenu) {
-        menu.removeAllItems()
-
-        let context = Self.context
+    private func makeDynamicItems() -> [NSMenuItem] {
         let data = ProxyDashboard.collect(context: context)
         let profiles = ProfileStore.ensureStore(context: context)
 
+        var items: [NSMenuItem] = []
+
+        items.append(sectionHeader("Managed Apps"))
         if profiles.isEmpty {
-            let emptyItem = NSMenuItem(title: "No proxy profiles saved yet", action: nil, keyEquivalent: "")
-            emptyItem.isEnabled = false
-            menu.addItem(emptyItem)
-            menu.addItem(.separator())
+            items.append(disabledItem("No proxy profiles saved yet"))
         }
-
-        let appsHeader = NSMenuItem(title: "Managed Apps", action: nil, keyEquivalent: "")
-        appsHeader.isEnabled = false
-        menu.addItem(appsHeader)
-
         for app in data.apps {
-            let item = NSMenuItem(
-                title: "\(app.name): \(app.alias)",
-                action: nil,
-                keyEquivalent: ""
-            )
+            let item = NSMenuItem(title: "\(app.name): \(app.alias)", action: nil, keyEquivalent: "")
             item.submenu = makeAppSubmenu(app: app, profiles: profiles)
-            menu.addItem(item)
+            items.append(item)
         }
 
-        menu.addItem(.separator())
-
-        let profilesHeader = NSMenuItem(title: "Profiles", action: nil, keyEquivalent: "")
-        profilesHeader.isEnabled = false
-        menu.addItem(profilesHeader)
-
+        items.append(.separator())
+        items.append(sectionHeader("Profiles"))
         for stored in profiles {
             let item = NSMenuItem(title: stored.profile.name, action: nil, keyEquivalent: "")
             item.submenu = makeProfileSubmenu(profile: stored.profile)
-            menu.addItem(item)
+            items.append(item)
         }
-
         let addItem = NSMenuItem(title: "Add Profile…", action: #selector(addProfile(_:)), keyEquivalent: "")
         addItem.target = self
-        menu.addItem(addItem)
+        items.append(addItem)
 
-        menu.addItem(.separator())
+        items.append(.separator())
+        items.append(makeLaunchAtLoginItem())
 
-        let launchItem = NSMenuItem(
-            title: "Launch at Login",
-            action: #selector(toggleLaunchAtLogin(_:)),
-            keyEquivalent: ""
-        )
-        launchItem.target = self
-        launchItem.state = ProxyLoginService.isEnabled() ? .on : .off
-        menu.addItem(launchItem)
+        items.append(.separator())
+        items.append(makeProxyItem())
 
-        let cliItem = NSMenuItem(
-            title: "Install “jpmanager” Command…",
-            action: #selector(installCLI(_:)),
-            keyEquivalent: ""
-        )
-        cliItem.target = self
-        menu.addItem(cliItem)
+        items.append(.separator())
+        return items
     }
 
-    private func makeDisabledItem(_ title: String) -> NSMenuItem {
+    private func sectionHeader(_ title: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
+    private func disabledItem(_ title: String) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
@@ -99,10 +101,10 @@ final class ProxyMenuController: NSObject, NSMenuDelegate {
         let submenu = NSMenu()
         submenu.autoenablesItems = false
 
-        submenu.addItem(makeDisabledItem("Proxy: \(app.proxyDisplay)"))
-        submenu.addItem(makeDisabledItem("Method: \(app.method.label)"))
+        submenu.addItem(disabledItem("Proxy: \(app.proxyDisplay)"))
+        submenu.addItem(disabledItem("Method: \(app.method.label)"))
         if !app.usedBy.isEmpty {
-            submenu.addItem(makeDisabledItem("Used by: \(app.usedBy.joined(separator: ", "))"))
+            submenu.addItem(disabledItem("Used by: \(app.usedBy.joined(separator: ", "))"))
         }
         submenu.addItem(.separator())
 
@@ -135,10 +137,10 @@ final class ProxyMenuController: NSObject, NSMenuDelegate {
         let submenu = NSMenu()
         submenu.autoenablesItems = false
 
-        submenu.addItem(makeDisabledItem("http_proxy: \(profile.state.httpProxy.isEmpty ? "-" : profile.state.httpProxy)"))
-        submenu.addItem(makeDisabledItem("https_proxy: \(profile.state.httpsProxy.isEmpty ? "-" : profile.state.httpsProxy)"))
-        submenu.addItem(makeDisabledItem("socks5_proxy: \(profile.state.socks5Proxy.isEmpty ? "-" : profile.state.socks5Proxy)"))
-        submenu.addItem(makeDisabledItem("no_proxy: \(profile.state.noProxy.isEmpty ? "-" : profile.state.noProxy)"))
+        submenu.addItem(disabledItem("http_proxy: \(profile.state.httpProxy.isEmpty ? "-" : profile.state.httpProxy)"))
+        submenu.addItem(disabledItem("https_proxy: \(profile.state.httpsProxy.isEmpty ? "-" : profile.state.httpsProxy)"))
+        submenu.addItem(disabledItem("socks5_proxy: \(profile.state.socks5Proxy.isEmpty ? "-" : profile.state.socks5Proxy)"))
+        submenu.addItem(disabledItem("no_proxy: \(profile.state.noProxy.isEmpty ? "-" : profile.state.noProxy)"))
         submenu.addItem(.separator())
 
         let editItem = NSMenuItem(title: "Edit…", action: #selector(editProfile(_:)), keyEquivalent: "")
@@ -147,6 +149,34 @@ final class ProxyMenuController: NSObject, NSMenuDelegate {
         submenu.addItem(editItem)
 
         return submenu
+    }
+
+    private func makeLaunchAtLoginItem() -> NSMenuItem {
+        let item = NSMenuItem(
+            title: "Launch at Login",
+            action: #selector(toggleLaunchAtLogin(_:)),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.state = ProxyLoginService.isEnabled() ? .on : .off
+        return item
+    }
+
+    private func makeProxyItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Proxy", action: nil, keyEquivalent: "")
+        let submenu = NSMenu()
+        submenu.autoenablesItems = false
+
+        let installItem = NSMenuItem(
+            title: "Install “jpmanager” Command…",
+            action: #selector(installCLI(_:)),
+            keyEquivalent: ""
+        )
+        installItem.target = self
+        submenu.addItem(installItem)
+
+        item.submenu = submenu
+        return item
     }
 
     // MARK: - Actions
@@ -179,13 +209,13 @@ final class ProxyMenuController: NSObject, NSMenuDelegate {
         runOperation {
             if profileName.isEmpty {
                 _ = try ProxyOperations.clearAppProxy(
-                    context: Self.context,
+                    context: context,
                     appName: app,
                     force: true
                 )
             } else {
                 _ = try ProxyOperations.configureAppWithProfile(
-                    context: Self.context,
+                    context: context,
                     appName: app,
                     profileName: profileName
                 )
@@ -202,7 +232,7 @@ final class ProxyMenuController: NSObject, NSMenuDelegate {
             return
         }
 
-        let profiles = ProfileStore.ensureStore(context: Self.context)
+        let profiles = ProfileStore.ensureStore(context: context)
         guard let stored = ProfileStore.findProfileByName(profiles, name) else {
             presentError(message: "Proxy profile \"\(name)\" does not exist.")
             return
@@ -248,14 +278,15 @@ final class ProxyMenuController: NSObject, NSMenuDelegate {
                             socks5Proxy: fields.socks5Proxy,
                             noProxy: fields.noProxy
                         ),
-                        context: Self.context,
+                        context: context,
                         allowOverwrite: allowOverwrite
                     )
                 } else {
-                    _ = try ProfileStore.saveProxyProfile(profile, context: Self.context, allowOverwrite: allowOverwrite)
+                    _ = try ProfileStore.saveProxyProfile(profile, context: context, allowOverwrite: allowOverwrite)
                 }
                 profileFormWindow?.close()
                 profileFormWindow = nil
+                refreshDynamicSection()
                 return true
             } catch let error as ProxyEngineError {
                 if !allowOverwrite,
@@ -292,6 +323,7 @@ final class ProxyMenuController: NSObject, NSMenuDelegate {
         } else if let error = ProxyLoginService.enable() {
             presentError(message: "Failed to enable launch at login: \(error)\n\nMake sure JMacTool.app is inside /Applications.")
         }
+        sender.state = ProxyLoginService.isEnabled() ? .on : .off
     }
 
     @objc private func installCLI(_ sender: NSMenuItem) {

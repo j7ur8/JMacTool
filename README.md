@@ -84,11 +84,12 @@ Add that line to `~/.zshrc` to persist it.
 
 ### Menu Bar
 
-The **Proxy** section of the JMacTool status-item menu shows:
+The JMacTool status-item menu shows the proxy manager at the top level:
 
-- every managed app with its matched profile, and a submenu to switch it to any saved profile (or `None`)
-- saved profiles with their values and an `Edit…` action, plus `Add Profile…`
+- a **Managed Apps** section: every managed app with its matched profile, and a submenu to switch it to any saved profile (or `None`)
+- a **Profiles** section: saved profiles with their values and an `Edit…` action, plus `Add Profile…`
 - a **Launch at Login** toggle backed by `SMAppService`
+- a **Proxy** submenu that keeps only the “jpmanager” command installer
 
 ## Project Layout
 
