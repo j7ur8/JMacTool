@@ -25,6 +25,7 @@ env \
   --disable-sandbox \
   --scratch-path "$SWIFT_SCRATCH_DIR" \
   -c release \
+  --arch arm64 --arch x86_64 \
   --product "$APP_NAME"
 
 BIN_DIR="$(
@@ -35,12 +36,15 @@ BIN_DIR="$(
     --disable-sandbox \
     --scratch-path "$SWIFT_SCRATCH_DIR" \
     -c release \
+    --arch arm64 --arch x86_64 \
     --show-bin-path
 )"
 
 cp "$BIN_DIR/$APP_NAME" "$EXECUTABLE_PATH"
 sed "s#__VERSION__#$VERSION#g" "$INFO_TEMPLATE_PATH" > "$CONTENTS_DIR/Info.plist"
 chmod +x "$EXECUTABLE_PATH"
+
+lipo -info "$EXECUTABLE_PATH"
 
 codesign --force --sign - --deep "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"

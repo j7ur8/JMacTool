@@ -109,7 +109,15 @@ Tests/JMacToolCoreTests/ XCTest coverage for the proxy engine and YAML/INI forma
 ```bash
 swift build            # debug build
 swift test             # run the test suite
-./build.sh             # signed dist/JMacTool.app
+./build.sh             # signed dist/JMacTool.app (universal binary: arm64 + x86_64)
 ```
 
 The CLI lives in the same binary, so `dist/JMacTool.app/Contents/MacOS/JMacTool list --json` works from a shell as well.
+
+### Installing a Release
+
+Download `JMacTool-<tag>-macos.zip` from [Releases](https://github.com/j7ur8/JMacTool/releases), unpack it, and move `JMacTool.app` to `/Applications`. The binaries are ad-hoc signed, so macOS Gatekeeper may block the first launch — right-click the app and choose **Open** once, or clear the quarantine flag:
+
+```bash
+xattr -cr /Applications/JMacTool.app
+```
