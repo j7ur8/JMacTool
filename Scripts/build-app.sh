@@ -44,6 +44,12 @@ cp "$BIN_DIR/$APP_NAME" "$EXECUTABLE_PATH"
 sed "s#__VERSION__#$VERSION#g" "$INFO_TEMPLATE_PATH" > "$CONTENTS_DIR/Info.plist"
 chmod +x "$EXECUTABLE_PATH"
 
+RESOURCES_DIR="$CONTENTS_DIR/Resources"
+ICONSET_DIR="$DIST_DIR/$APP_NAME.iconset"
+mkdir -p "$RESOURCES_DIR"
+swift "$ROOT_DIR/Scripts/build-app-icon.swift" "$ICONSET_DIR"
+iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/AppIcon.icns"
+
 lipo -info "$EXECUTABLE_PATH"
 
 codesign --force --sign - --deep "$APP_DIR"

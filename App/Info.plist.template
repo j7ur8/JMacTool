@@ -4,6 +4,8 @@
 <dict>
   <key>CFBundleExecutable</key>
   <string>JMacTool</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>local.codex.JMacTool</string>
   <key>CFBundleName</key>
