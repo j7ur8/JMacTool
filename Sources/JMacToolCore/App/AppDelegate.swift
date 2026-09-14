@@ -103,7 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if userInitiated {
                 let alert = NSAlert()
                 alert.messageText = "Update failed"
-                alert.informativeText = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
+                alert.informativeText = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
                 alert.alertStyle = .warning
                 alert.addButton(withTitle: "OK")
                 NSApp.activate(ignoringOtherApps: true)

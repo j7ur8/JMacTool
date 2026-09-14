@@ -94,7 +94,7 @@ enum UpdateChecker {
         var request = URLRequest(url: latestReleaseAPIURL())
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await ProxyAwareSession.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw UpdateError.releaseLookupFailed
         }
@@ -119,19 +119,19 @@ enum UpdateError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .releaseLookupFailed:
-            return "无法查询 GitHub Releases。"
+            return "Could not reach GitHub Releases. If a system proxy is configured, make sure the proxy app is running — a direct-connection retry already failed too."
         case .notRunningFromAppBundle:
-            return "当前不是从 JMacTool.app 内运行的，无法自动更新。"
+            return "JMacTool is not running from inside JMacTool.app; in-place updates are unavailable."
         case .downloadFailed(let statusCode):
-            return "下载更新失败（HTTP \(statusCode)）。"
+            return "Could not download the update archive (HTTP \(statusCode))."
         case .extractedAppNotFound:
-            return "下载包中没有找到 JMacTool.app。"
+            return "The downloaded archive does not contain JMacTool.app."
         case .signatureVerificationFailed:
-            return "下载包签名校验失败，已取消安装。"
+            return "Signature verification of the downloaded archive failed; installation cancelled."
         case .identityMismatch(let expected):
-            return "下载包的签名身份与本地不符（期望 \(expected)），已取消安装。"
+            return "The downloaded update is not signed with the expected identity (\(expected)); installation cancelled."
         case .installStepFailed(let step):
-            return "更新准备失败：\(step)。"
+            return "Update preparation failed at: \(step)."
         }
     }
 }

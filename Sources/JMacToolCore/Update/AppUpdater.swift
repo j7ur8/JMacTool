@@ -28,7 +28,7 @@ final class AppUpdater {
         try FileManager.default.createDirectory(at: workDirectory, withIntermediateDirectories: true)
 
         // Download.
-        let (downloadedURL, response) = try await URLSession.shared.download(from: info.downloadURL)
+        let (downloadedURL, response) = try await ProxyAwareSession.download(from: info.downloadURL)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             throw UpdateError.downloadFailed(statusCode: (response as? HTTPURLResponse)?.statusCode ?? -1)
         }
