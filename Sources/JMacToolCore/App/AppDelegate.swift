@@ -106,10 +106,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let tooltip = inputChangeTooltip()
         inputChangeView.update(isEnabled: windowMonitor.isEnabled, toolTip: tooltip)
         inputChangeMenuItem.toolTip = tooltip
-        arrowKeyMenuItem.state = arrowKeyMapper.isEnabled ? .on : .off
-        arrowKeyMenuItem.toolTip = arrowKeyMapper.isEnabled
+        let mappingActive = arrowKeyMapper.isEnabled && arrowKeyMapper.isTapRunning
+        arrowKeyMenuItem.state = mappingActive ? .on : .off
+        arrowKeyMenuItem.toolTip = mappingActive
             ? "Option+I/J/K/L are arrow keys; Option+N/M jump by word."
-            : "Option+IJKL arrow-key mapping is disabled."
+            : "Option+IJKL arrow-key mapping is inactive (disabled, permissions missing, or the app was rebuilt)."
 
         if let button = statusItem.button {
             button.image = makeStatusImage(isCleaning: isCleaning)
@@ -143,10 +144,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         if arrowKeyMapper.hasAccessibilityAccess {
             arrowKeyMapper.setEnabled(true)
+            if !arrowKeyMapper.isTapRunning {
+                arrowKeyMapper.setEnabled(false)
+                showArrowKeyTapFailureAlert()
+            }
         } else {
             showArrowKeyAccessibilityAlertIfNeeded()
             arrowKeyMapper.requestAccessibilityAccessIfNeeded()
         }
+    }
+
+    private func showArrowKeyTapFailureAlert() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Option+IJKL → Arrow Keys 未生效"
+        alert.informativeText = "缺少权限：\(arrowKeyMapper.missingPermissionDescription ?? "未知原因")。授权后重新打开开关即可。注意：映射仅在 JMacTool 运行期间有效。"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "好")
+        alert.runModal()
     }
 
     @objc private func toggleArrowKeyMapping(_ sender: NSMenuItem) {
@@ -165,6 +181,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             arrowKeyMapper.setEnabled(true)
         } else {
             arrowKeyMapper.setEnabled(false)
+        }
+
+        if arrowKeyMapper.isEnabled, !arrowKeyMapper.isTapRunning {
+            arrowKeyMapper.setEnabled(false)
+            showArrowKeyTapFailureAlert()
         }
 
         UserDefaults.standard.set(arrowKeyMapper.isEnabled, forKey: AppConstants.arrowKeyMappingEnabledDefaultsKey)

@@ -19,6 +19,7 @@ final class ArrowKeyMapper {
     }
 
     private(set) var isEnabled = false
+    private(set) var lastEnableFailure: String?
 
     var hasAccessibilityAccess: Bool {
         AXIsProcessTrusted()
@@ -26,6 +27,21 @@ final class ArrowKeyMapper {
 
     var hasInputMonitoringAccess: Bool {
         CGPreflightListenEventAccess()
+    }
+
+    /// The tap only rewrites keys while it is actually installed.
+    var isTapRunning: Bool {
+        eventTap.isRunning
+    }
+
+    var missingPermissionDescription: String? {
+        if !hasAccessibilityAccess {
+            return "辅助功能（System Settings → Privacy & Security → Accessibility）"
+        }
+        if !hasInputMonitoringAccess {
+            return "输入监控（System Settings → Privacy & Security → Input Monitoring）"
+        }
+        return nil
     }
 
     func requestAccessibilityAccessIfNeeded() {
@@ -54,8 +70,12 @@ final class ArrowKeyMapper {
 
         if enabled {
             eventTap.start()
+            // Mutating taps require Accessibility; listen-only checks Input
+            // Monitoring. Surface the failure instead of failing silently.
+            lastEnableFailure = eventTap.isRunning ? nil : missingPermissionDescription ?? "事件 tap 创建失败"
         } else {
             eventTap.stop()
+            lastEnableFailure = nil
         }
     }
 
