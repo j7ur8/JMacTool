@@ -52,7 +52,19 @@ iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/AppIcon.icns"
 
 lipo -info "$EXECUTABLE_PATH"
 
-codesign --force --sign - --deep "$APP_DIR"
+# Sign with the stable self-signed identity when available so TCC
+# permissions survive app updates; fall back to ad-hoc otherwise.
+SIGN_IDENTITY="${JMACTOOL_CODESIGN_IDENTITY:-}"
+if [ -z "$SIGN_IDENTITY" ]; then
+  if security find-identity -v -p codesigning 2>/dev/null | grep -q "\"JMacTool Local\""; then
+    SIGN_IDENTITY="JMacTool Local"
+  else
+    SIGN_IDENTITY="-"
+  fi
+fi
+
+codesign --force --sign "$SIGN_IDENTITY" --deep "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
 
+echo "Signed with identity: $SIGN_IDENTITY"
 echo "Built $APP_DIR ($VERSION)"

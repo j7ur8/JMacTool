@@ -13,6 +13,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let inputChangeView = StatusDotMenuItemView(title: "Input Change")
     private let arrowKeyMenuItem = NSMenuItem()
     private let arrowKeyMenuItemView = StatusDotMenuItemView(title: "Option+IJKL → Arrow Keys")
+    private let updateController = AppUpdater()
+    private let checkUpdatesMenuItem = NSMenuItem(
+        title: "Check for Updates…",
+        action: #selector(checkForUpdates(_:)),
+        keyEquivalent: ""
+    )
     private var hasShownArrowKeyAccessibilityAlert = false
     private let quitMenuItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
     private var hasShownAccessibilityAlert = false
@@ -30,6 +36,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         validateInputChangeConfigurationOnLaunch()
         restoreArrowKeyMappingState()
         refreshUI()
+        scheduleAutomaticUpdateCheck()
+    }
+
+    /// Silent update check on launch; only app-bundle installs participate
+    /// (the raw `swift build` binary has no Info.plist version).
+    private func scheduleAutomaticUpdateCheck() {
+        guard Bundle.main.bundlePath.hasSuffix(".app") else {
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            Task { await self?.runUpdateCheck(userInitiated: false) }
+        }
+    }
+
+    @objc private func checkForUpdates(_ sender: NSMenuItem) {
+        Task { await runUpdateCheck(userInitiated: true) }
+    }
+
+    private func runUpdateCheck(userInitiated: Bool) async {
+        guard !updateController.isBusy else {
+            return
+        }
+
+        if userInitiated {
+            checkUpdatesMenuItem.title = "Checking for Updates…"
+            checkUpdatesMenuItem.isEnabled = false
+        }
+        defer {
+            if userInitiated {
+                checkUpdatesMenuItem.title = "Check for Updates…"
+                checkUpdatesMenuItem.isEnabled = true
+            }
+        }
+
+        do {
+            guard let update = try await UpdateChecker.fetchLatestRelease() else {
+                if userInitiated {
+                    let alert = NSAlert()
+                    alert.messageText = "You're up to date"
+                    alert.informativeText = "JMacTool \(UpdateChecker.currentAppVersion()) is the latest version."
+                    alert.alertStyle = .informational
+                    alert.addButton(withTitle: "OK")
+                    NSApp.activate(ignoringOtherApps: true)
+                    alert.runModal()
+                }
+                return
+            }
+
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.messageText = "JMacTool \(update.version) is available"
+            alert.informativeText = "Install and relaunch now? The new version replaces the app in place and restarts automatically.\n\nPermissions (Accessibility, Input Monitoring) are preserved when the app is signed with the stable identity."
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "Install & Relaunch")
+            alert.addButton(withTitle: "Cancel")
+
+            guard alert.runModal() == .alertFirstButtonReturn else {
+                return
+            }
+
+            try await updateController.downloadAndPrepareInstall(update)
+            NSApp.terminate(nil)
+        } catch {
+            if userInitiated {
+                let alert = NSAlert()
+                alert.messageText = "Update failed"
+                alert.informativeText = (error as? LocalizedError)?.errorDescription ?? String(describing: error)
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "OK")
+                NSApp.activate(ignoringOtherApps: true)
+                alert.runModal()
+            }
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -46,6 +126,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         clearScreenMenuItem.target = self
+        checkUpdatesMenuItem.target = self
         quitMenuItem.target = self
 
         inputChangeView.onClick = { [weak self] in
@@ -67,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(quitMenuItem)
         proxyMenuController.install(into: menu, before: quitMenuItem)
+        menu.insertItem(checkUpdatesMenuItem, at: menu.index(of: quitMenuItem))
         statusItem.menu = menu
     }
 

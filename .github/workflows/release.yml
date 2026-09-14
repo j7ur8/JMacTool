@@ -27,6 +27,21 @@ jobs:
       - name: Run tests
         run: swift test
 
+      - name: Import code signing identity
+        if: ${{ secrets.MACOS_SIGNING_P12 != '' }}
+        env:
+          MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+        run: |
+          echo "$MACOS_SIGNING_P12" | base64 -D -i - -o "$RUNNER_TEMP/signing.p12"
+          KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/signing.p12" -k "$KEYCHAIN" -P "$MACOS_SIGNING_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          echo "JMACTOOL_CODESIGN_IDENTITY=JMacTool Local" >> "$GITHUB_ENV"
+
       - name: Build app bundle
         run: ./build.sh
 

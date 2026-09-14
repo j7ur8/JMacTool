@@ -9,6 +9,22 @@ A single macOS menu bar utility that bundles everyday power tools:
 
 Requires macOS 13+. Build with Swift Package Manager (`swift build`, `./build.sh` for the app bundle).
 
+## Updates
+
+The menu has a **Check for Updates…** item and JMacTool also checks the [GitHub Releases](https://github.com/j7ur8/JMacTool/releases) feed once at launch. When a newer release is found you can install it in place: the app is downloaded, its code signature is verified, and a small detached script replaces the bundle and relaunches it. No Gatekeeper prompt appears because the download is not quarantined.
+
+Automatic replacement requires running from `JMacTool.app` (not a raw `swift build` binary).
+
+### Keeping permissions across updates
+
+macOS binds Accessibility/Input Monitoring grants to the app's code-signing identity. Ad-hoc signatures change on every build, which is why permissions used to reset. Run this once on your Mac to create a fixed self-signed identity:
+
+```bash
+./Scripts/setup-code-signing.sh
+```
+
+After that, local builds sign with `JMacTool Local` automatically, and one final re-grant of the permissions is all you will ever need. To keep CI release artifacts on the same identity, add the two GitHub repository secrets the script prints (`MACOS_SIGNING_P12`, `MACOS_SIGNING_PASSWORD`); without them CI falls back to ad-hoc and updates will ask for permissions again.
+
 ## Option+IJKL → Arrow Keys
 
 Toggle **Option+IJKL → Arrow Keys** in the menu to rewrite keyboard events system-wide:
