@@ -11,6 +11,11 @@ permissions:
 jobs:
   release:
     runs-on: macos-latest
+    # The `secrets` context is unavailable in step-level `if:` conditions, so
+    # map the signing secrets to job-level env and branch on that instead.
+    env:
+      MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+      MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -28,12 +33,9 @@ jobs:
         run: swift test
 
       - name: Import code signing identity
-        if: ${{ secrets.MACOS_SIGNING_P12 != '' }}
-        env:
-          MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
-          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+        if: ${{ env.MACOS_SIGNING_P12 != '' }}
         run: |
-          echo "$MACOS_SIGNING_P12" | base64 -D -i - -o "$RUNNER_TEMP/signing.p12"
+          echo "$MACOS_SIGNING_P12" | base64 -D -o "$RUNNER_TEMP/signing.p12"
           KEYCHAIN="$RUNNER_TEMP/build.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -hex 24)
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
