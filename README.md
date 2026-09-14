@@ -4,9 +4,22 @@ A single macOS menu bar utility that bundles everyday power tools:
 
 - **Clear Screen** — covers every display with a black curtain, swallows keyboard/trackpad input, and locks the Touch Bar so the screen can be wiped physically. Click **Restore System** to exit.
 - **Input Change** — switches to an English keyboard layout whenever the focused app or window changes, waiting for keyboard activity to settle so terminal input and shortcuts are not interrupted.
+- **Option+IJKL → Arrow Keys** — system-wide arrow-key navigation on the letter keys (Option+N/M jump by word), a built-in replacement for the common Karabiner rule.
 - **Proxy** — a native port of [jpmanager](https://github.com/j7ur8/jpmanager): manage proxy profiles and apply them to npm, git, pip, curl, wget, yarn, maven, gradle, conda, go, and your zsh environment. Fully compatible with existing `~/.jpmanager` data.
 
 Requires macOS 13+. Build with Swift Package Manager (`swift build`, `./build.sh` for the app bundle).
+
+## Option+IJKL → Arrow Keys
+
+Toggle **Option+IJKL → Arrow Keys** in the menu to rewrite keyboard events system-wide:
+
+| Keys | Result |
+| --- | --- |
+| `Option + I` / `J` / `K` / `L` | plain up / left / down / right |
+| `Option + N` / `M` | `Option + ←` / `Option + →` (word-wise jump) |
+| combos | other modifiers (Shift/Cmd/…) are preserved |
+
+The toggle needs the app in System Settings → Privacy & Security → **Accessibility** (and Input Monitoring for reliable event handling) and is remembered across launches. If Karabiner-Elements is also running the same rule, disable one of the two to keep a single source of truth.
 
 ## Proxy Management
 

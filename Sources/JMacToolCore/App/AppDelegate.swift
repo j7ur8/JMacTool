@@ -5,11 +5,18 @@ import Foundation
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let cleaningModeController = CleaningModeController()
     private let windowMonitor = FocusChangeMonitor()
+    private let arrowKeyMapper = ArrowKeyMapper()
     private let proxyMenuController = ProxyMenuController()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let clearScreenMenuItem = NSMenuItem(title: "Clear Screen", action: #selector(clearScreen), keyEquivalent: "")
     private let inputChangeMenuItem = NSMenuItem()
     private let inputChangeView = InputChangeMenuItemView()
+    private let arrowKeyMenuItem = NSMenuItem(
+        title: "Option+IJKL → Arrow Keys",
+        action: #selector(toggleArrowKeyMapping(_:)),
+        keyEquivalent: ""
+    )
+    private var hasShownArrowKeyAccessibilityAlert = false
     private let quitMenuItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
     private var hasShownAccessibilityAlert = false
     private var hasShownInputMonitoringAlert = false
@@ -24,12 +31,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureControllers()
         restoreInputChangeState()
         validateInputChangeConfigurationOnLaunch()
+        restoreArrowKeyMappingState()
         refreshUI()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         cleaningModeController.stop()
         windowMonitor.setEnabled(false)
+        arrowKeyMapper.setEnabled(false)
     }
 
     private func configureStatusItem() {
@@ -40,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         clearScreenMenuItem.target = self
+        arrowKeyMenuItem.target = self
         quitMenuItem.target = self
 
         inputChangeView.onClick = { [weak self] in
@@ -52,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         menu.addItem(clearScreenMenuItem)
         menu.addItem(inputChangeMenuItem)
+        menu.addItem(arrowKeyMenuItem)
         menu.addItem(.separator())
         menu.addItem(quitMenuItem)
         proxyMenuController.install(into: menu, before: quitMenuItem)
@@ -95,6 +106,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let tooltip = inputChangeTooltip()
         inputChangeView.update(isEnabled: windowMonitor.isEnabled, toolTip: tooltip)
         inputChangeMenuItem.toolTip = tooltip
+        arrowKeyMenuItem.state = arrowKeyMapper.isEnabled ? .on : .off
+        arrowKeyMenuItem.toolTip = arrowKeyMapper.isEnabled
+            ? "Option+I/J/K/L are arrow keys; Option+N/M jump by word."
+            : "Option+IJKL arrow-key mapping is disabled."
 
         if let button = statusItem.button {
             button.image = makeStatusImage(isCleaning: isCleaning)
@@ -118,6 +133,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         return nil
+    }
+
+    private func restoreArrowKeyMappingState() {
+        let stored = UserDefaults.standard.object(forKey: AppConstants.arrowKeyMappingEnabledDefaultsKey) as? Bool ?? false
+        guard stored else {
+            return
+        }
+
+        if arrowKeyMapper.hasAccessibilityAccess {
+            arrowKeyMapper.setEnabled(true)
+        } else {
+            showArrowKeyAccessibilityAlertIfNeeded()
+            arrowKeyMapper.requestAccessibilityAccessIfNeeded()
+        }
+    }
+
+    @objc private func toggleArrowKeyMapping(_ sender: NSMenuItem) {
+        let next = !arrowKeyMapper.isEnabled
+
+        if next {
+            if !arrowKeyMapper.hasAccessibilityAccess {
+                showArrowKeyAccessibilityAlertIfNeeded()
+                arrowKeyMapper.requestAccessibilityAccessIfNeeded()
+            }
+
+            if !arrowKeyMapper.hasInputMonitoringAccess {
+                arrowKeyMapper.requestInputMonitoringAccessIfNeeded()
+            }
+
+            arrowKeyMapper.setEnabled(true)
+        } else {
+            arrowKeyMapper.setEnabled(false)
+        }
+
+        UserDefaults.standard.set(arrowKeyMapper.isEnabled, forKey: AppConstants.arrowKeyMappingEnabledDefaultsKey)
+        refreshUI()
+    }
+
+    private func showArrowKeyAccessibilityAlertIfNeeded() {
+        guard !hasShownArrowKeyAccessibilityAlert else {
+            return
+        }
+
+        hasShownArrowKeyAccessibilityAlert = true
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Accessibility Access Required"
+        alert.informativeText = "Option+IJKL → Arrow Keys rewrites keyboard events system-wide, which requires JMacTool in System Settings > Privacy & Security > Accessibility."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @objc private func clearScreen() {
