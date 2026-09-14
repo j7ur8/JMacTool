@@ -280,7 +280,6 @@ public enum ProxyCLI {
 
     private static func parseWriteOptions(_ optionArgs: [String]) throws -> ParsedWriteOptions {
         var parsed = ParsedWriteOptions()
-        let profile = parsed.profile
         var seenKeys = Set<String>()
 
         var index = 0

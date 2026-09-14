@@ -10,12 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let clearScreenMenuItem = NSMenuItem(title: "Clear Screen", action: #selector(clearScreen), keyEquivalent: "")
     private let inputChangeMenuItem = NSMenuItem()
-    private let inputChangeView = InputChangeMenuItemView()
-    private let arrowKeyMenuItem = NSMenuItem(
-        title: "Option+IJKL → Arrow Keys",
-        action: #selector(toggleArrowKeyMapping(_:)),
-        keyEquivalent: ""
-    )
+    private let inputChangeView = StatusDotMenuItemView(title: "Input Change")
+    private let arrowKeyMenuItem = NSMenuItem()
+    private let arrowKeyMenuItemView = StatusDotMenuItemView(title: "Option+IJKL → Arrow Keys")
     private var hasShownArrowKeyAccessibilityAlert = false
     private let quitMenuItem = NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q")
     private var hasShownAccessibilityAlert = false
@@ -49,13 +46,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         clearScreenMenuItem.target = self
-        arrowKeyMenuItem.target = self
         quitMenuItem.target = self
 
         inputChangeView.onClick = { [weak self] in
             self?.toggleInputChange()
         }
         inputChangeMenuItem.view = inputChangeView
+
+        arrowKeyMenuItemView.onClick = { [weak self] in
+            self?.toggleArrowKeyMapping()
+        }
+        arrowKeyMenuItem.view = arrowKeyMenuItemView
 
         let menu = NSMenu()
         menu.delegate = self
@@ -107,10 +108,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         inputChangeView.update(isEnabled: windowMonitor.isEnabled, toolTip: tooltip)
         inputChangeMenuItem.toolTip = tooltip
         let mappingActive = arrowKeyMapper.isEnabled && arrowKeyMapper.isTapRunning
-        arrowKeyMenuItem.state = mappingActive ? .on : .off
-        arrowKeyMenuItem.toolTip = mappingActive
-            ? "Option+I/J/K/L are arrow keys; Option+N/M jump by word."
-            : "Option+IJKL arrow-key mapping is inactive (disabled, permissions missing, or the app was rebuilt)."
+        arrowKeyMenuItemView.update(
+            isEnabled: mappingActive,
+            toolTip: mappingActive
+                ? "Option+I/J/K/L are arrow keys; Option+N/M jump by word."
+                : "Option+IJKL arrow-key mapping is inactive (disabled, permissions missing, or the app was rebuilt)."
+        )
 
         if let button = statusItem.button {
             button.image = makeStatusImage(isCleaning: isCleaning)
@@ -165,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         alert.runModal()
     }
 
-    @objc private func toggleArrowKeyMapping(_ sender: NSMenuItem) {
+    private func toggleArrowKeyMapping() {
         let next = !arrowKeyMapper.isEnabled
 
         if next {

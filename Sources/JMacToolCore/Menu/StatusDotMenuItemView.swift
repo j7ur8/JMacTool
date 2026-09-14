@@ -1,10 +1,12 @@
 import AppKit
 
+/// Menu row with a title and a red/green status dot on the right, shared by
+/// the menu toggles (Input Change, Option+IJKL → Arrow Keys).
 @MainActor
-final class InputChangeMenuItemView: NSView {
+final class StatusDotMenuItemView: NSView {
     var onClick: (() -> Void)?
 
-    private let titleLabel = NSTextField(labelWithString: "Input Change")
+    private let titleLabel: NSTextField
     private let statusDot = NSView()
     private var isHighlighted = false {
         didSet {
@@ -13,8 +15,9 @@ final class InputChangeMenuItemView: NSView {
         }
     }
 
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
+    init(title: String) {
+        titleLabel = NSTextField(labelWithString: title)
+        super.init(frame: .zero)
         configure()
     }
 
