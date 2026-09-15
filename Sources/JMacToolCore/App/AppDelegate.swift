@@ -10,9 +10,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let clearScreenMenuItem = NSMenuItem(title: "Clear Screen", action: #selector(clearScreen), keyEquivalent: "")
     private let inputChangeMenuItem = NSMenuItem()
-    private let inputChangeView = StatusDotMenuItemView(title: "Input Change")
+    private let inputChangeView = CheckmarkMenuItemView(title: "Input Change")
     private let arrowKeyMenuItem = NSMenuItem()
-    private let arrowKeyMenuItemView = StatusDotMenuItemView(title: "Option+IJKL → Arrow Keys")
+    private let arrowKeyMenuItemView = CheckmarkMenuItemView(title: "Option+IJKL → Arrow Keys")
     private let updateController = AppUpdater()
     private let checkUpdatesMenuItem = NSMenuItem(
         title: "Check for Updates…",

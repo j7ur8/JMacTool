@@ -1,13 +1,15 @@
 import AppKit
 
-/// Menu row with a title and a red/green status dot on the right, shared by
-/// the menu toggles (Input Change, Option+IJKL → Arrow Keys).
+/// Menu row with a title and an enable checkmark on the far right, shared by
+/// the menu toggles (Input Change, Option+IJKL → Arrow Keys, Launch at
+/// Login). The checkmark's slot keeps a fixed size whether visible or hidden,
+/// so toggling never shifts the layout.
 @MainActor
-final class StatusDotMenuItemView: NSView {
+final class CheckmarkMenuItemView: NSView {
     var onClick: (() -> Void)?
 
     private let titleLabel: NSTextField
-    private let statusDot = NSView()
+    private let checkmarkLabel = NSTextField(labelWithString: "✓")
     private var isHighlighted = false {
         didSet {
             updateAppearance()
@@ -32,7 +34,7 @@ final class StatusDotMenuItemView: NSView {
     }
 
     func setEnabledState(_ isEnabled: Bool) {
-        statusDot.layer?.backgroundColor = (isEnabled ? NSColor.systemGreen : NSColor.systemRed).cgColor
+        checkmarkLabel.isHidden = !isEnabled
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
@@ -92,30 +94,31 @@ final class StatusDotMenuItemView: NSView {
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = NSFont.menuFont(ofSize: 0)
 
-        statusDot.translatesAutoresizingMaskIntoConstraints = false
-        statusDot.wantsLayer = true
-        statusDot.layer?.cornerRadius = 4
-        statusDot.layer?.masksToBounds = true
+        // Hidden, not removed: the reserved slot keeps the row width stable
+        // when the checkmark appears or disappears.
+        checkmarkLabel.translatesAutoresizingMaskIntoConstraints = false
+        checkmarkLabel.font = NSFont.menuFont(ofSize: 0)
 
         addSubview(titleLabel)
-        addSubview(statusDot)
+        addSubview(checkmarkLabel)
 
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 24),
             widthAnchor.constraint(greaterThanOrEqualToConstant: 190),
             titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
-            statusDot.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            statusDot.centerYAnchor.constraint(equalTo: centerYAnchor),
-            statusDot.widthAnchor.constraint(equalToConstant: 8),
-            statusDot.heightAnchor.constraint(equalToConstant: 8),
-            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: statusDot.leadingAnchor, constant: -12)
+            checkmarkLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            checkmarkLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            checkmarkLabel.widthAnchor.constraint(equalToConstant: 14),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: checkmarkLabel.leadingAnchor, constant: -12)
         ])
 
         updateAppearance()
     }
 
     private func updateAppearance() {
-        titleLabel.textColor = isHighlighted ? .selectedMenuItemTextColor : .labelColor
+        let textColor = isHighlighted ? NSColor.selectedMenuItemTextColor : NSColor.labelColor
+        titleLabel.textColor = textColor
+        checkmarkLabel.textColor = textColor
     }
 }

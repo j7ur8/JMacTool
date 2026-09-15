@@ -12,6 +12,7 @@ final class ProxyMenuController: NSObject {
     private weak var mainMenu: NSMenu?
     private weak var quitItem: NSMenuItem?
     private weak var updatesItem: NSMenuItem?
+    private weak var launchAtLoginView: CheckmarkMenuItemView?
     private var dynamicItems: [NSMenuItem] = []
 
     init(context: ProxyFileContext = .live) {
@@ -158,13 +159,14 @@ final class ProxyMenuController: NSObject {
     }
 
     private func makeLaunchAtLoginItem() -> NSMenuItem {
-        let item = NSMenuItem(
-            title: "Launch at Login",
-            action: #selector(toggleLaunchAtLogin(_:)),
-            keyEquivalent: ""
-        )
-        item.target = self
-        item.state = ProxyLoginService.isEnabled() ? .on : .off
+        let item = NSMenuItem(title: "Launch at Login", action: nil, keyEquivalent: "")
+        let view = CheckmarkMenuItemView(title: "Launch at Login")
+        view.setEnabledState(ProxyLoginService.isEnabled())
+        view.onClick = { [weak self] in
+            self?.toggleLaunchAtLogin()
+        }
+        item.view = view
+        launchAtLoginView = view
         return item
     }
 
@@ -321,7 +323,7 @@ final class ProxyMenuController: NSObject {
         _ = runSave(allowOverwrite: false)
     }
 
-    @objc private func toggleLaunchAtLogin(_ sender: NSMenuItem) {
+    @objc private func toggleLaunchAtLogin() {
         if ProxyLoginService.isEnabled() {
             if let error = ProxyLoginService.disable() {
                 presentError(message: "Failed to disable launch at login: \(error)")
@@ -329,7 +331,7 @@ final class ProxyMenuController: NSObject {
         } else if let error = ProxyLoginService.enable() {
             presentError(message: "Failed to enable launch at login: \(error)\n\nMake sure JMacTool.app is inside /Applications.")
         }
-        sender.state = ProxyLoginService.isEnabled() ? .on : .off
+        launchAtLoginView?.setEnabledState(ProxyLoginService.isEnabled())
     }
 
     @objc private func installCLI(_ sender: NSMenuItem) {
