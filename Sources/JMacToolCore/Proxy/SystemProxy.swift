@@ -173,7 +173,9 @@ enum SystemProxy {
         proxyCommands(setVerb: "setsecurewebproxy", stateVerb: "setsecurewebproxystate", endpoint: endpoints.secure)
         proxyCommands(setVerb: "setsocksfirewallproxy", stateVerb: "setsocksfirewallproxystate", endpoint: endpoints.socks)
 
-        let domains = endpoints.bypassDomains.isEmpty ? ["<empty>"] : endpoints.bypassDomains
+        // networksetup's documented token for clearing the bypass list is
+        // the literal "Empty" (case-sensitive; "<empty>" is stored verbatim).
+        let domains = endpoints.bypassDomains.isEmpty ? ["Empty"] : endpoints.bypassDomains
         commands.append(["-setproxybypassdomains", service] + domains)
         return commands
     }
@@ -185,7 +187,7 @@ enum SystemProxy {
             ["-setwebproxystate", service, "off"],
             ["-setsecurewebproxystate", service, "off"],
             ["-setsocksfirewallproxystate", service, "off"],
-            ["-setproxybypassdomains", service, "<empty>"]
+            ["-setproxybypassdomains", service, "Empty"]
         ]
     }
 

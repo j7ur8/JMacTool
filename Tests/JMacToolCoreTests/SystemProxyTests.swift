@@ -93,7 +93,7 @@ final class SystemProxyTests: XCTestCase {
             ["-setwebproxystate", "Wi-Fi", "off"],
             ["-setsecurewebproxystate", "Wi-Fi", "off"],
             ["-setsocksfirewallproxystate", "Wi-Fi", "off"],
-            ["-setproxybypassdomains", "Wi-Fi", "<empty>"]
+            ["-setproxybypassdomains", "Wi-Fi", "Empty"]
         ])
     }
 
