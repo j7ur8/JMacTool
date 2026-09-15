@@ -58,9 +58,9 @@ final class AppUpdater {
 
         // When this machine uses the stable identity, updates must carry it
         // too so TCC permissions survive the replacement.
-        if Self.stableSigningIdentityInUse() {
+        if let identityHash = Self.stableSigningIdentityHash() {
             let requirement = Self.designatedRequirement(of: newApp)
-            guard requirement.contains(Self.stableIdentityName) else {
+            guard Self.requirement(requirement, carriesIdentityHash: identityHash) else {
                 throw UpdateError.identityMismatch(expected: Self.stableIdentityName)
             }
         }
@@ -116,14 +116,46 @@ final class AppUpdater {
 
     // MARK: - Signing identity helpers
 
-    static func stableSigningIdentityInUse() -> Bool {
+    /// The certificate hash of the local "JMacTool Local" identity, or nil
+    /// when this machine does not use one (in which case updates are not
+    /// held to a stable identity).
+    static func stableSigningIdentityHash() -> String? {
         guard let output = runCapturedProcess(
             "/usr/bin/security",
             ["find-identity", "-v", "-p", "codesigning"]
-        ) else {
-            return false
+        ), !output.isEmpty else {
+            return nil
         }
-        return output.contains("\"\(stableIdentityName)\"")
+
+        // Lines look like: `  1) 9EA64ACA... "JMacTool Local"`
+        for line in output.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.contains("\"\(stableIdentityName)\"") else {
+                continue
+            }
+            let tokens = trimmed.split(separator: " ")
+            if tokens.count >= 2,
+               tokens[1].count == 40,
+               let _ = Int(tokens[1], radix: 16) {
+                return tokens[1].lowercased()
+            }
+        }
+        return nil
+    }
+
+    /// Whether a `codesign -d -r-` designated-requirement text carries the
+    /// given certificate. codesign emits the leaf as a hash
+    /// (`certificate leaf = H"..."`) or by common name
+    /// (`certificate leaf[subject.CN] = "..."`) depending on version; accept
+    /// both. Ad-hoc signatures (cdhash-only) never match.
+    static func requirement(_ text: String, carriesIdentityHash hash: String) -> Bool {
+        if text.range(
+            of: "certificate leaf = H\"\(hash.lowercased())\"",
+            options: .caseInsensitive
+        ) != nil {
+            return true
+        }
+        return text.contains("[subject.CN] = \"\(stableIdentityName)\"")
     }
 
     static func designatedRequirement(of appURL: URL) -> String {

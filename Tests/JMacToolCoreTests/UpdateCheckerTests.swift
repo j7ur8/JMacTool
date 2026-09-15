@@ -53,4 +53,27 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertEqual(AppUpdater.shellQuoted("/Applications/JMacTool.app"), "'/Applications/JMacTool.app'")
         XCTAssertEqual(AppUpdater.shellQuoted("/tmp/it's here"), "'/tmp/it'\\''s here'")
     }
+
+    @MainActor
+    func testRequirementCarriesIdentityHash() {
+        let hash = "9EA64ACAB59651F742F59721C3AFE0F3DF52FC9B"
+
+        // Hash form, as emitted for self-signed leaves on current macOS.
+        let hashForm = """
+        Executable=/tmp/x/JMacTool.app/Contents/MacOS/JMacTool
+        Identifier=local.codex.JMacTool
+        # designated => identifier "local.codex.JMacTool" and certificate leaf = H"\(hash.lowercased())"
+        """
+        XCTAssertTrue(AppUpdater.requirement(hashForm, carriesIdentityHash: hash))
+
+        // Common-name form, as emitted by older codesign versions.
+        let cnForm = "# designated => identifier \"local.codex.JMacTool\" and certificate leaf[subject.CN] = \"JMacTool Local\""
+        XCTAssertTrue(AppUpdater.requirement(cnForm, carriesIdentityHash: hash))
+
+        // Ad-hoc signatures (cdhash only) and foreign certificates never match.
+        let adhocForm = "# designated => cdhash H\"aa8314d8f7d0eb0d94898187fb44a5ccbc89e24b\" or cdhash H\"8f1b21c68f397ee6be59db1217e22254a738695d\""
+        XCTAssertFalse(AppUpdater.requirement(adhocForm, carriesIdentityHash: hash))
+        XCTAssertFalse(AppUpdater.requirement(hashForm, carriesIdentityHash: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"))
+        XCTAssertFalse(AppUpdater.requirement("", carriesIdentityHash: hash))
+    }
 }
