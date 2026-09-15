@@ -32,7 +32,8 @@ enum ProxyTargetRegistry {
         "line-kv",
         "yarnrc",
         "maven-settings",
-        "condarc-proxy-servers"
+        "condarc-proxy-servers",
+        "system-proxy"
     ]
 
     // Built-in definitions embedded verbatim (sorted by file name, matching
@@ -193,6 +194,14 @@ enum ProxyTargetRegistry {
               key: proxy
               value: ""
           expected: single-url
+        """),
+        ("system-proxy.yaml", """
+        version: 1
+        target:
+          name: system
+          wayLabel: macOS Network Proxies
+          handler: system-proxy
+          expected: system-proxy
         """),
         ("wget.yaml", """
         version: 1

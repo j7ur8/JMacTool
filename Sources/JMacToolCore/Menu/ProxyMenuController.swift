@@ -3,14 +3,15 @@ import ServiceManagement
 
 /// Owns the proxy-related sections of the JMacTool main menu: managed apps
 /// with per-app profile switching and saved profiles are rendered directly in
-/// the main menu, Launch at Login is a standalone item, and the Proxy submenu
-/// keeps only the "jpmanager" CLI installer.
+/// the main menu, Launch at Login and Check for Updates share one group, and
+/// the Proxy submenu keeps only the "jpmanager" CLI installer.
 @MainActor
 final class ProxyMenuController: NSObject {
     private let context: ProxyFileContext
     private var profileFormWindow: ProfileFormWindow?
     private weak var mainMenu: NSMenu?
     private weak var quitItem: NSMenuItem?
+    private weak var updatesItem: NSMenuItem?
     private var dynamicItems: [NSMenuItem] = []
 
     init(context: ProxyFileContext = .live) {
@@ -18,10 +19,12 @@ final class ProxyMenuController: NSObject {
     }
 
     /// Registers the dynamic proxy sections that live directly in the main
-    /// menu, inserted before the Quit item.
-    func install(into menu: NSMenu, before quitItem: NSMenuItem) {
+    /// menu, inserted before the Quit item. `updatesItem` is placed in the
+    /// same group as Launch at Login.
+    func install(into menu: NSMenu, before quitItem: NSMenuItem, updatesItem: NSMenuItem? = nil) {
         mainMenu = menu
         self.quitItem = quitItem
+        self.updatesItem = updatesItem
         refreshDynamicSection()
     }
 
@@ -77,6 +80,9 @@ final class ProxyMenuController: NSObject {
 
         items.append(.separator())
         items.append(makeLaunchAtLoginItem())
+        if let updatesItem {
+            items.append(updatesItem)
+        }
 
         items.append(.separator())
         items.append(makeProxyItem())

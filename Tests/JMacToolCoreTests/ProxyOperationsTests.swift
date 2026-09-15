@@ -8,7 +8,8 @@ final class ProxyOperationsTests: XCTestCase {
     override func setUpWithError() throws {
         homeDirectory = NSTemporaryDirectory() + "JMacToolTests-\(UUID().uuidString)"
         try FileManager.default.createDirectory(atPath: homeDirectory, withIntermediateDirectories: true)
-        context = ProxyFileContext(homeDirectory: homeDirectory)
+        // Keep the dashboard's system-target read (scutil) out of tests.
+        context = ProxyFileContext(homeDirectory: homeDirectory, runCommand: { _, _ in nil })
     }
 
     override func tearDownWithError() throws {
@@ -130,12 +131,12 @@ final class ProxyOperationsTests: XCTestCase {
     }
 
     func testUnknownAppAndUnknownProfileErrors() {
-        XCTAssertThrowsError(try ProxyOperations.configureAppWithProfile(context: context, appName: "system", profileName: "x")) { error in
+        XCTAssertThrowsError(try ProxyOperations.configureAppWithProfile(context: context, appName: "nosuchapp", profileName: "x")) { error in
             guard let engineError = error as? ProxyEngineError else {
                 XCTFail("expected ProxyEngineError, got \(error)")
                 return
             }
-            XCTAssertTrue(engineError.message.contains("Unknown app \"system\""))
+            XCTAssertTrue(engineError.message.contains("Unknown app \"nosuchapp\""))
             XCTAssertTrue(engineError.message.contains("environment"))
         }
 

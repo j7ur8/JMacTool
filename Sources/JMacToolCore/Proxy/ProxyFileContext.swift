@@ -14,10 +14,23 @@ enum ProxyConstants {
     static let legacyCommandName = "jpmanager"
 }
 
+/// Captured result of an external command run on behalf of a proxy target.
+struct ProxyCommandOutput: Sendable {
+    var exitStatus: Int32
+    var stdout: String
+    var stderr: String
+}
+
+typealias RunCommand = @Sendable (String, [String]) -> ProxyCommandOutput?
+
 /// Filesystem access for the proxy engine with an injectable home directory so
 /// tests (and ad-hoc verification) can run against a scratch store.
 struct ProxyFileContext: Sendable {
     let homeDirectory: String
+
+    /// Runs an external command for targets whose state lives outside the
+    /// filesystem (the macOS system proxy); injectable so tests stay hermetic.
+    var runCommand: RunCommand = SystemProxy.defaultRun
 
     static var live: ProxyFileContext {
         let home = ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()

@@ -5,7 +5,7 @@ A single macOS menu bar utility that bundles everyday power tools:
 - **Clear Screen** — covers every display with a black curtain, swallows keyboard/trackpad input, and locks the Touch Bar so the screen can be wiped physically. Click **Restore System** to exit.
 - **Input Change** — switches to an English keyboard layout whenever the focused app or window changes, waiting for keyboard activity to settle so terminal input and shortcuts are not interrupted.
 - **Option+IJKL → Arrow Keys** — system-wide arrow-key navigation on the letter keys (Option+N/M jump by word), a built-in replacement for the common Karabiner rule.
-- **Proxy** — a native port of [jpmanager](https://github.com/j7ur8/jpmanager): manage proxy profiles and apply them to npm, git, pip, curl, wget, yarn, maven, gradle, conda, go, and your zsh environment. Fully compatible with existing `~/.jpmanager` data.
+- **Proxy** — a native port of [jpmanager](https://github.com/j7ur8/jpmanager): manage proxy profiles and apply them to npm, git, pip, curl, wget, yarn, maven, gradle, conda, go, your zsh environment, and the macOS system proxy. Fully compatible with existing `~/.jpmanager` data.
 
 Requires macOS 13+. Build with Swift Package Manager (`swift build`, `./build.sh` for the app bundle).
 
@@ -68,6 +68,7 @@ profile:
 | `yarn` | `~/.yarnrc` | |
 | `conda` | `~/.condarc` | `proxy_servers` section |
 | `go` | `~/.config/go/env` | `HTTP_PROXY`, `ALL_PROXY`, ... |
+| `system` | macOS Network Proxies | applies via `networksetup` on the default-route service; `no_proxy` becomes the bypass domain list |
 
 Extra file-backed targets (or overrides of the built-ins, merged by `name`) can be added in `~/.jpmanager/targets/<target-name>.yaml`:
 
@@ -80,7 +81,7 @@ target:
   handler: ini-root
 ```
 
-Supported v1 handlers: `ini-root`, `ini-section`, `managed-shell-env`, `line-kv`, `yarnrc`, `maven-settings`, `condarc-proxy-servers`.
+Supported v1 handlers: `ini-root`, `ini-section`, `managed-shell-env`, `line-kv`, `yarnrc`, `maven-settings`, `condarc-proxy-servers`, `system-proxy`.
 
 ### Commands
 
@@ -118,7 +119,7 @@ The JMacTool status-item menu shows the proxy manager at the top level:
 
 - a **Managed Apps** section: every managed app with its matched profile, and a submenu to switch it to any saved profile (or `None`)
 - a **Profiles** section: saved profiles with their values and an `Edit…` action, plus `Add Profile…`
-- a **Launch at Login** toggle backed by `SMAppService`
+- a **Launch at Login** toggle backed by `SMAppService`, grouped with `Check for Updates…`
 - a **Proxy** submenu that keeps only the “jpmanager” command installer
 
 ## Project Layout

@@ -16,13 +16,16 @@ final class ProxyMenuControllerTests: XCTestCase {
 
     @MainActor
     private func makeInstalledMenu() -> (ProxyMenuController, NSMenu) {
-        let controller = ProxyMenuController(context: ProxyFileContext(homeDirectory: homeDirectory))
+        // The system target shells out (scutil/networksetup); keep tests hermetic.
+        let context = ProxyFileContext(homeDirectory: homeDirectory, runCommand: { _, _ in nil })
+        let controller = ProxyMenuController(context: context)
         let menu = NSMenu()
         menu.autoenablesItems = false
         menu.addItem(NSMenuItem(title: "Clear Screen", action: nil, keyEquivalent: ""))
         let quit = NSMenuItem(title: "Quit", action: nil, keyEquivalent: "")
         menu.addItem(quit)
-        controller.install(into: menu, before: quit)
+        let updates = NSMenuItem(title: "Check for Updates…", action: nil, keyEquivalent: "")
+        controller.install(into: menu, before: quit, updatesItem: updates)
         return (controller, menu)
     }
 
@@ -36,9 +39,16 @@ final class ProxyMenuControllerTests: XCTestCase {
         XCTAssertTrue(titles.contains("Launch at Login"))
         XCTAssertTrue(titles.contains("Add Profile…"))
         XCTAssertTrue(titles.contains("Quit"))
+        // Check for Updates shares the Launch at Login group (no separator
+        // between them).
+        if let launchIndex = titles.firstIndex(of: "Launch at Login") {
+            XCTAssertEqual(titles[launchIndex + 1], "Check for Updates…")
+        } else {
+            XCTFail("Launch at Login is missing")
+        }
         // Managed apps are rendered as top-level items, one per built-in
         // target except the dashboard-hidden zsh alias.
-        for app in ["environment", "conda", "curl", "git", "go", "gradle", "maven", "npm", "pip", "wget", "yarn"] {
+        for app in ["environment", "conda", "curl", "git", "go", "gradle", "maven", "npm", "pip", "system", "wget", "yarn"] {
             XCTAssertTrue(titles.contains { $0.hasPrefix("\(app):") }, "missing app item: \(app)")
         }
         XCTAssertFalse(titles.contains { $0.hasPrefix("zsh:") })

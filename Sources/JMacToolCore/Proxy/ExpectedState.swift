@@ -34,6 +34,8 @@ enum ExpectedState {
             return CondaConfig.expectedState(state)
         case "go":
             return go(state)
+        case "system-proxy":
+            return SystemProxy.expectedState(state)
         default:
             return httpHttps(state)
         }

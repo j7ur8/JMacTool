@@ -147,8 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(arrowKeyMenuItem)
         menu.addItem(.separator())
         menu.addItem(quitMenuItem)
-        proxyMenuController.install(into: menu, before: quitMenuItem)
-        menu.insertItem(checkUpdatesMenuItem, at: menu.index(of: quitMenuItem))
+        proxyMenuController.install(into: menu, before: quitMenuItem, updatesItem: checkUpdatesMenuItem)
         statusItem.menu = menu
     }
 

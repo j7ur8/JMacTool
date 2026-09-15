@@ -138,8 +138,8 @@ final class ProxyCLITests: XCTestCase {
     }
 
     func testSetUnknownAppAndProfile() {
-        XCTAssertEqual(run("set system office"), 1)
-        XCTAssertTrue(buffer.stderr.contains("Unknown app \"system\""))
+        XCTAssertEqual(run("set nosuchapp office"), 1)
+        XCTAssertTrue(buffer.stderr.contains("Unknown app \"nosuchapp\""))
 
         XCTAssertEqual(run("set npm ghost"), 1)
         XCTAssertTrue(buffer.stderr.contains("Unknown proxy profile \"ghost\""))

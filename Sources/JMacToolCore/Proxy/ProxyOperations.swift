@@ -74,7 +74,7 @@ enum ProxyOperations {
         let selection = try resolveAppSelection(appName, context: context)
         let stored = try findProxyProfileByName(context: context, profileName: profileName)
 
-        selection.target.apply(stored.state)
+        try selection.target.apply(stored.state)
 
         return ConfigureResult(
             selection: selection,
@@ -122,7 +122,7 @@ enum ProxyOperations {
             }
         }
 
-        selection.target.clear()
+        try selection.target.clear()
         return ClearResult(selection: selection, way: selection.target.wayLabel, aborted: false)
     }
 

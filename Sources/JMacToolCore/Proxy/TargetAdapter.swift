@@ -54,12 +54,15 @@ enum TargetAdapter {
         case "condarc-proxy-servers":
             return CondaConfig.currentState(content: context.readTextFile(target.path))
 
+        case "system-proxy":
+            return SystemProxy.currentState(run: context.runCommand)
+
         default:
             return .empty
         }
     }
 
-    static func write(context: ProxyFileContext, target: ProxyTargetDefinition, state: ProxyState) {
+    static func write(context: ProxyFileContext, target: ProxyTargetDefinition, state: ProxyState) throws {
         switch target.handler {
         case "ini-root":
             let entries: [(String, String)]
@@ -107,12 +110,15 @@ enum TargetAdapter {
         case "condarc-proxy-servers":
             context.writeTextFile(target.path, CondaConfig.upsert(content: context.readTextFile(target.path), state: state))
 
+        case "system-proxy":
+            try SystemProxy.apply(state, run: context.runCommand)
+
         default:
             break
         }
     }
 
-    static func clear(context: ProxyFileContext, target: ProxyTargetDefinition) {
+    static func clear(context: ProxyFileContext, target: ProxyTargetDefinition) throws {
         let empty = ProxyState.empty
 
         switch target.handler {
@@ -165,6 +171,9 @@ enum TargetAdapter {
             let nextContent = CondaConfig.upsert(content: context.readTextFile(target.path), state: empty)
             context.syncTextFile(target.path, nextContent)
 
+        case "system-proxy":
+            try SystemProxy.clear(run: context.runCommand)
+
         default:
             break
         }
@@ -188,12 +197,12 @@ struct ProxyTarget: Sendable {
         TargetAdapter.currentState(context: context, target: definition)
     }
 
-    func apply(_ state: ProxyState) {
-        TargetAdapter.write(context: context, target: definition, state: state)
+    func apply(_ state: ProxyState) throws {
+        try TargetAdapter.write(context: context, target: definition, state: state)
     }
 
-    func clear() {
-        TargetAdapter.clear(context: context, target: definition)
+    func clear() throws {
+        try TargetAdapter.clear(context: context, target: definition)
     }
 }
 
