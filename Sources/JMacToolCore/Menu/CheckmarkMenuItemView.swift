@@ -105,7 +105,10 @@ final class CheckmarkMenuItemView: NSView {
         NSLayoutConstraint.activate([
             heightAnchor.constraint(equalToConstant: 24),
             widthAnchor.constraint(greaterThanOrEqualToConstant: 190),
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            // NSTextField offsets its frame 2pt left of the constraint, so a
+            // 14pt constant puts the text field at x=12 — exactly where
+            // native menu items place their titles.
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
             titleLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
             checkmarkLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
             checkmarkLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
