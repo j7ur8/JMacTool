@@ -120,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func configureStatusItem() {
         if let button = statusItem.button {
-            button.image = makeStatusImage(isCleaning: false)
+            button.image = makeStatusImage()
             button.imagePosition = .imageOnly
             button.toolTip = AppConstants.appName
         }
@@ -196,16 +196,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 : "Option+IJKL arrow-key mapping is inactive (disabled, permissions missing, or the app was rebuilt)."
         )
 
-        if let button = statusItem.button {
-            button.image = makeStatusImage(isCleaning: isCleaning)
-            button.title = button.image == nil ? "JT" : ""
-        }
+        updateStatusItemImage()
     }
 
-    private func makeStatusImage(isCleaning: Bool) -> NSImage? {
-        let symbolNames = isCleaning
-            ? ["sparkles", "display.trianglebadge.exclamationmark", "moon.stars.fill"]
-            : ["display", "sparkles", "rectangle"]
+    /// The status icon does not track cleaning mode: the curtain and the hidden
+    /// menu bar cover it for the whole session, so a cleaning symbol would never
+    /// be on screen where it mattered.
+    private func updateStatusItemImage() {
+        guard let button = statusItem.button else {
+            return
+        }
+
+        button.image = makeStatusImage()
+        button.title = button.image == nil ? "JT" : ""
+    }
+
+    private func makeStatusImage() -> NSImage? {
+        let symbolNames = ["display", "rectangle"]
 
         for symbolName in symbolNames {
             if let image = NSImage(
