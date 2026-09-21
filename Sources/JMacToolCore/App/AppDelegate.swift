@@ -27,7 +27,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let app = NSApplication.shared
-        app.setActivationPolicy(.accessory)
+        // Prohibited for the app's whole lifetime: a Dock tile, the Cmd+Tab
+        // entry, and the "recent apps" slot all come from running as a regular
+        // app, and JMacTool is reachable only through its status item.
+        app.setActivationPolicy(.prohibited)
         app.isAutomaticCustomizeTouchBarMenuItemEnabled = false
 
         configureStatusItem()
@@ -183,8 +186,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func refreshUI() {
-        let isCleaning = cleaningModeController.isRunning
-        NSApp.setActivationPolicy(isCleaning ? .regular : .accessory)
         let tooltip = inputChangeTooltip()
         inputChangeView.update(isEnabled: windowMonitor.isEnabled, toolTip: tooltip)
         inputChangeMenuItem.toolTip = tooltip
