@@ -87,4 +87,77 @@ final class ProxyMenuControllerTests: XCTestCase {
         let profileSubmenu = try XCTUnwrap(profileItem.submenu)
         XCTAssertTrue(profileSubmenu.items.contains { $0.title == "Edit…" })
     }
+
+    /// Fires a menu item the way the status menu does, so the controller's
+    /// target/action wiring is exercised rather than the private methods.
+    @MainActor
+    @discardableResult
+    private func fire(_ item: NSMenuItem) -> Bool {
+        guard let action = item.action else {
+            return false
+        }
+        return NSApp.sendAction(action, to: item.target, from: item)
+    }
+
+    @MainActor
+    func testAddAndEditReuseOneFormWindow() throws {
+        var profile = ProxyProfile(name: "office", state: .empty)
+        profile.state.httpProxy = "http://127.0.0.1:7890"
+        _ = try ProfileStore.saveProxyProfile(profile, context: ProxyFileContext(homeDirectory: homeDirectory))
+
+        let (controller, menu) = makeInstalledMenu()
+        let addItem = try XCTUnwrap(menu.items.first { $0.title == "Add Profile…" })
+
+        XCTAssertTrue(fire(addItem))
+        let window = try XCTUnwrap(controller.profileFormWindow)
+        XCTAssertEqual(window.title, "Add Proxy Profile")
+
+        // Clicking Add again (the reported duplicate-window bug) must reuse the
+        // window that is already open.
+        XCTAssertTrue(fire(addItem))
+        XCTAssertTrue(controller.profileFormWindow === window)
+
+        // Editing a profile while the form is open re-targets that same window.
+        let profileItem = try XCTUnwrap(menu.items.first { $0.title == "office" })
+        let editItem = try XCTUnwrap(profileItem.submenu?.items.first { $0.title == "Edit…" })
+
+        XCTAssertTrue(fire(editItem))
+        XCTAssertTrue(controller.profileFormWindow === window)
+        XCTAssertEqual(window.title, "Edit Proxy Profile")
+        XCTAssertEqual(window.fields.name, "office")
+        XCTAssertEqual(window.fields.httpProxy, "http://127.0.0.1:7890")
+
+        window.close()
+        XCTAssertNil(controller.profileFormWindow)
+    }
+
+    @MainActor
+    func testReusedFormSavesToTheProfileItWasRetargetedTo() throws {
+        let context = ProxyFileContext(homeDirectory: homeDirectory, runCommand: { _, _ in nil })
+        var profile = ProxyProfile(name: "office", state: .empty)
+        profile.state.httpProxy = "http://127.0.0.1:7890"
+        _ = try ProfileStore.saveProxyProfile(profile, context: context)
+
+        let (controller, menu) = makeInstalledMenu()
+        let addItem = try XCTUnwrap(menu.items.first { $0.title == "Add Profile…" })
+        XCTAssertTrue(fire(addItem))
+
+        let profileItem = try XCTUnwrap(menu.items.first { $0.title == "office" })
+        let editItem = try XCTUnwrap(profileItem.submenu?.items.first { $0.title == "Edit…" })
+        XCTAssertTrue(fire(editItem))
+
+        let window = try XCTUnwrap(controller.profileFormWindow)
+        window.fields.httpProxy = "http://127.0.0.1:8080"
+        window.commit()
+
+        // The re-targeted form edited "office" instead of creating a second,
+        // half-filled profile from the earlier Add request.
+        let stored = ProfileStore.ensureStore(context: context)
+        XCTAssertEqual(stored.count, 1)
+        XCTAssertEqual(ProfileStore.findProfileByName(stored, "office")?.profile.state.httpProxy, "http://127.0.0.1:8080")
+
+        // Saving closes the form and clears the controller's reference.
+        XCTAssertNil(controller.profileFormWindow)
+        XCTAssertFalse(window.isVisible)
+    }
 }

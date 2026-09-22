@@ -9,7 +9,9 @@ import ServiceManagement
 @MainActor
 final class ProxyMenuController: NSObject {
     private let context: ProxyFileContext
-    private var profileFormWindow: ProfileFormWindow?
+    /// The one form window this controller ever shows; re-targeted in place for
+    /// every Add/Edit request so duplicates are impossible.
+    private(set) var profileFormWindow: ProfileFormWindow?
     private weak var mainMenu: NSMenu?
     private weak var quitItem: NSMenuItem?
     private weak var updatesItem: NSMenuItem?
@@ -240,12 +242,54 @@ final class ProxyMenuController: NSObject {
     }
 
     private func openProfileForm(existing: ProfileFormWindow.Fields?, originalName: String? = nil) {
-        let window = ProfileFormWindow(existing: existing) { [weak self] fields in
+        let window = profileFormWindow ?? makeProfileFormWindow()
+        profileFormWindow = window
+        window.present(existing: existing) { [weak self] fields in
             self?.saveProfile(fields: fields, originalName: originalName)
         }
-        profileFormWindow = window
+        // Closing the form hides the app again (see `profileFormDidClose`), so
+        // undo that first; unhide is a no-op while the app is visible.
+        NSApp.unhide(nil)
+        // The click that reached this action is the user gesture AppKit needs
+        // to activate a status-item app; without it the window cannot become key
+        // and the text fields would not accept typing.
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
+
+        // The action still runs while the status menu is tracking, which can
+        // swallow the activation request and leave the form behind the frontmost
+        // app. Re-assert it once the menu has closed; this is a no-op whenever
+        // the synchronous attempt already worked.
+        Task { @MainActor [weak self, weak window] in
+            guard let self, let window, self.profileFormWindow === window else {
+                return
+            }
+
+            if !NSApp.isActive {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+            if !window.isKeyWindow {
+                window.makeKeyAndOrderFront(nil)
+            }
+        }
+    }
+
+    private func makeProfileFormWindow() -> ProfileFormWindow {
+        ProfileFormWindow { [weak self] in
+            self?.profileFormDidClose()
+        }
+    }
+
+    private func profileFormDidClose() {
+        profileFormWindow = nil
+        refreshDynamicSection()
+
+        // A windowless accessory app keeps keyboard focus, which would swallow
+        // whatever the user types next; hand activation back once the form is
+        // gone.
+        if NSApp.isActive, NSApp.windows.isEmpty {
+            NSApp.hide(nil)
+        }
     }
 
     private func saveProfile(fields: ProfileFormWindow.Fields, originalName: String?) {
@@ -273,9 +317,9 @@ final class ProxyMenuController: NSObject {
                 } else {
                     _ = try ProfileStore.saveProxyProfile(profile, context: context, allowOverwrite: allowOverwrite)
                 }
+                // Closing runs `profileFormDidClose`, which clears the reference
+                // and refreshes the menu sections.
                 profileFormWindow?.close()
-                profileFormWindow = nil
-                refreshDynamicSection()
                 return true
             } catch let error as ProxyEngineError {
                 if !allowOverwrite,

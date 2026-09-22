@@ -27,10 +27,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let app = NSApplication.shared
-        // Prohibited for the app's whole lifetime: a Dock tile, the Cmd+Tab
-        // entry, and the "recent apps" slot all come from running as a regular
-        // app, and JMacTool is reachable only through its status item.
-        app.setActivationPolicy(.prohibited)
+        // Accessory for the app's whole lifetime: no Dock tile, no Cmd+Tab
+        // entry, no "recent apps" slot, but the app can still be activated so
+        // its windows (the proxy profile form) become key and accept typing.
+        // `.prohibited` cannot be activated at all, which silently broke the
+        // form's text fields.
+        app.setActivationPolicy(.accessory)
         app.isAutomaticCustomizeTouchBarMenuItemEnabled = false
 
         configureStatusItem()
