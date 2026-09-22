@@ -39,6 +39,8 @@ final class ProxyMenuControllerTests: XCTestCase {
         XCTAssertTrue(titles.contains("Launch at Login"))
         XCTAssertTrue(titles.contains("Add Profile…"))
         XCTAssertTrue(titles.contains("Quit"))
+        // The bundled CLI needs no installer, so no Proxy submenu is offered.
+        XCTAssertFalse(titles.contains("Proxy"))
         // Check for Updates shares the Launch at Login group (no separator
         // between them).
         if let launchIndex = titles.firstIndex(of: "Launch at Login") {
@@ -54,17 +56,6 @@ final class ProxyMenuControllerTests: XCTestCase {
         XCTAssertFalse(titles.contains { $0.hasPrefix("zsh:") })
         // Empty store shows the hint and no profile rows.
         XCTAssertTrue(titles.contains("No proxy profiles saved yet"))
-    }
-
-    @MainActor
-    func testProxySubmenuOnlyKeepsCLIInstaller() throws {
-        let (_, menu) = makeInstalledMenu()
-        let proxyItem = try XCTUnwrap(menu.items.first { $0.title == "Proxy" })
-        let submenu = try XCTUnwrap(proxyItem.submenu)
-
-        XCTAssertEqual(submenu.items.count, 1)
-        XCTAssertTrue(submenu.items[0].title.hasPrefix("Install"))
-        XCTAssertTrue(submenu.items[0].title.contains("jpmanager"))
     }
 
     @MainActor

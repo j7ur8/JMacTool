@@ -54,7 +54,8 @@ final class ProxyCLITests: XCTestCase {
         XCTAssertTrue(buffer.stdout.contains("Usage: JMacTool proxy"))
         XCTAssertTrue(buffer.stdout.contains("proxy remove <name>"))
         XCTAssertTrue(buffer.stdout.contains("   or: JMacTool list [--json]"))
-        XCTAssertTrue(buffer.stdout.contains("   or: JMacTool install-cli"))
+        // The CLI ships inside the app bundle; there is nothing to install.
+        XCTAssertFalse(buffer.stdout.contains("install-cli"))
     }
 
     func testNoArgumentsPrintsUsageAndFails() {

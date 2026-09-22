@@ -85,6 +85,12 @@ Supported v1 handlers: `ini-root`, `ini-section`, `managed-shell-env`, `line-kv`
 
 ### Commands
 
+The command line is the app binary itself, so `JMacTool` below stands for the bundled executable:
+
+```bash
+JMACTOOL=/Applications/JMacTool.app/Contents/MacOS/JMacTool
+```
+
 ```bash
 JMacTool proxy                       # interactive profile browser (TTY)
 JMacTool proxy add --name <name> [--http-proxy <url>] [--https-proxy <url>] [--socks5-proxy <url>] [--no-proxy <value>] [--force]
@@ -98,17 +104,20 @@ JMacTool config                      # interactive app selector (TTY)
 JMacTool shell-init zsh              # prints a zsh wrapper for instant session updates
 JMacTool shell-apply zsh             # prints export/unset lines for the current session
 JMacTool login <enable|disable|status> [--json]
-JMacTool install-cli                 # installs /usr/local/bin/jpmanager shim
 ```
 
 `unset zsh` / `unset environment` refuses to clear proxy settings that do not match any saved profile unless `--force` is passed (or confirmed interactively in a TTY).
 
-The historical `jpmanager` command keeps working: the menu bar item **Proxy → Install "jpmanager" Command…** (or `JMacTool install-cli`) writes a `/usr/local/bin/jpmanager` shim that forwards to this binary, so existing scripts and shell hooks need no changes.
+Nothing is installed outside the bundle. If existing scripts call the historical `jpmanager` name, point your own alias or symlink at the bundled binary:
+
+```bash
+alias jpmanager="$JMACTOOL"          # add to ~/.zshrc to make it permanent
+```
 
 To make `set zsh` / `unset zsh` apply immediately in the current shell:
 
 ```bash
-eval "$(jpmanager shell-init zsh)"
+eval "$("$JMACTOOL" shell-init zsh)"
 ```
 
 Add that line to `~/.zshrc` to persist it.
@@ -120,7 +129,6 @@ The JMacTool status-item menu shows the proxy manager at the top level:
 - a **Managed Apps** section: every managed app with its matched profile, and a submenu to switch it to any saved profile (or `None`)
 - a **Profiles** section: saved profiles with their values and an `Edit…` action, plus `Add Profile…`
 - a **Launch at Login** toggle backed by `SMAppService`, grouped with `Check for Updates…`
-- a **Proxy** submenu that keeps only the “jpmanager” command installer
 
 ## Project Layout
 

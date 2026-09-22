@@ -1,70 +1,6 @@
 import Darwin
 import Foundation
 
-/// Installs the historical `/usr/local/bin/jpmanager` command shim that
-/// forwards to the bundled JMacTool binary so existing scripts and the zsh
-/// wrapper keep working.
-enum ProxyCLIInstaller {
-    static var shimPath: String { "/usr/local/bin/\(ProxyConstants.legacyCommandName)" }
-
-    static func currentExecutablePath() -> String? {
-        if let url = Bundle.main.executableURL, FileManager.default.fileExists(atPath: url.path) {
-            return url.path
-        }
-
-        guard let argv0 = CommandLine.arguments.first else {
-            return nil
-        }
-
-        if argv0.hasPrefix("/") {
-            return argv0
-        }
-        if argv0.contains("/") {
-            return FileManager.default.currentDirectoryPath + "/" + argv0
-        }
-        return nil
-    }
-
-    static func shimContent(executablePath: String) -> String {
-        """
-        #!/bin/zsh
-        exec '\(executablePath.replacingOccurrences(of: "'", with: "'\\''"))' "$@"
-
-        """
-    }
-
-    enum InstallOutcome {
-        case alreadyInstalled
-        case installed
-        case replaced
-    }
-
-    static func install() throws -> InstallOutcome {
-        guard let executablePath = currentExecutablePath() else {
-            throw ProxyEngineError(message: "Unable to determine the JMacTool executable path for the CLI shim.")
-        }
-
-        let content = shimContent(executablePath: executablePath)
-
-        if let existing = try? String(contentsOfFile: shimPath, encoding: .utf8),
-           existing.trimmingCharacters(in: .whitespacesAndNewlines)
-               == content.trimmingCharacters(in: .whitespacesAndNewlines) {
-            return .alreadyInstalled
-        }
-
-        let directory = (shimPath as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-
-        let replaced = FileManager.default.fileExists(atPath: shimPath)
-        let temporaryPath = "\(shimPath).tmp-\(getpid())"
-        try content.write(toFile: temporaryPath, atomically: true, encoding: .utf8)
-        try FileManager.default.moveItem(atPath: temporaryPath, toPath: shimPath)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: shimPath)
-
-        return replaced ? .replaced : .installed
-    }
-}
-
 /// Injectable console for the proxy CLI so command handlers are testable.
 struct ProxyCLIIO: Sendable {
     let writeStdout: @Sendable (String) -> Void
@@ -104,10 +40,12 @@ struct ProxyCLIInvocation {
     }
 }
 
-/// Command-line interface for the integrated proxy manager. The commands and
-/// output strings mirror the jpmanager CLI so `~/.zshrc` integrations keep
-/// working through the `/usr/local/bin/jpmanager` shim. Dispatch, help, and
-/// usage text are generated from a single command table.
+/// Command-line interface for the integrated proxy manager. It lives inside the
+/// app bundle (`JMacTool.app/Contents/MacOS/JMacTool`), so there is no separate
+/// command to install: invoke the bundled binary directly. The commands and
+/// output strings mirror the jpmanager CLI, and `shell-init zsh` prints a
+/// wrapper named after the historical command. Dispatch, help, and usage text
+/// are generated from a single command table.
 public enum ProxyCLI {
     // MARK: - Entry
 
@@ -221,12 +159,6 @@ public enum ProxyCLI {
                 summary: "Control or report launch-at-login",
                 usageLines: { programName in ["\(programName) login <enable|disable|status> [--json]"] },
                 run: { invocation, args in try handleLoginCommand(invocation, args) }
-            ),
-            CommandSpec(
-                name: "install-cli",
-                summary: "Install the /usr/local/bin/jpmanager shim",
-                usageLines: { programName in ["\(programName) install-cli"] },
-                run: { invocation, _ in try handleInstallCLICommand(invocation) }
             ),
             CommandSpec(
                 name: "gui",
@@ -767,19 +699,5 @@ public enum ProxyCLI {
                 "Usage: \(invocation.programName) login <enable|disable|status> [--json]"
             )
         }
-    }
-
-    // MARK: - install-cli
-
-    private static func handleInstallCLICommand(_ invocation: ProxyCLIInvocation) throws -> Int32 {
-        switch try ProxyCLIInstaller.install() {
-        case .alreadyInstalled:
-            invocation.print("The \(ProxyCLIInstaller.shimPath) command shim is already up to date.")
-        case .installed:
-            invocation.print("Installed \(ProxyCLIInstaller.shimPath).")
-        case .replaced:
-            invocation.print("Replaced \(ProxyCLIInstaller.shimPath).")
-        }
-        return 0
     }
 }

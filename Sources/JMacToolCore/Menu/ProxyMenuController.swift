@@ -3,8 +3,9 @@ import ServiceManagement
 
 /// Owns the proxy-related sections of the JMacTool main menu: managed apps
 /// with per-app profile switching and saved profiles are rendered directly in
-/// the main menu, Launch at Login and Check for Updates share one group, and
-/// the Proxy submenu keeps only the "jpmanager" CLI installer.
+/// the main menu, and Launch at Login and Check for Updates share one group.
+/// The command line ships inside the app bundle itself, so no shell installer
+/// is offered here.
 @MainActor
 final class ProxyMenuController: NSObject {
     private let context: ProxyFileContext
@@ -86,9 +87,6 @@ final class ProxyMenuController: NSObject {
         }
 
         items.append(.separator())
-        items.append(makeProxyItem())
-
-        items.append(.separator())
         return items
     }
 
@@ -167,23 +165,6 @@ final class ProxyMenuController: NSObject {
         }
         item.view = view
         launchAtLoginView = view
-        return item
-    }
-
-    private func makeProxyItem() -> NSMenuItem {
-        let item = NSMenuItem(title: "Proxy", action: nil, keyEquivalent: "")
-        let submenu = NSMenu()
-        submenu.autoenablesItems = false
-
-        let installItem = NSMenuItem(
-            title: "Install “jpmanager” Command…",
-            action: #selector(installCLI(_:)),
-            keyEquivalent: ""
-        )
-        installItem.target = self
-        submenu.addItem(installItem)
-
-        item.submenu = submenu
         return item
     }
 
@@ -332,34 +313,5 @@ final class ProxyMenuController: NSObject {
             presentError(message: "Failed to enable launch at login: \(error)\n\nMake sure JMacTool.app is inside /Applications.")
         }
         launchAtLoginView?.setEnabledState(ProxyLoginService.isEnabled())
-    }
-
-    @objc private func installCLI(_ sender: NSMenuItem) {
-        let alert = NSAlert()
-        alert.messageText = "Install the “jpmanager” command"
-        alert.informativeText = "Creates \(ProxyCLIInstaller.shimPath) so terminal commands and the zsh shell hook keep working. Writing to /usr/local/bin may require administrator permissions."
-        alert.addButton(withTitle: "Install")
-        alert.addButton(withTitle: "Cancel")
-
-        guard alert.runModal() == .alertFirstButtonReturn else {
-            return
-        }
-
-        do {
-            switch try ProxyCLIInstaller.install() {
-            case .alreadyInstalled:
-                presentError(message: "The \(ProxyCLIInstaller.shimPath) command shim is already up to date.")
-            case .installed, .replaced:
-                let done = NSAlert()
-                done.messageText = "Command installed"
-                done.informativeText = "Run `eval \"$(jpmanager shell-init zsh)\"` in a shell to wire up instant proxy switching."
-                done.alertStyle = .informational
-                done.runModal()
-            }
-        } catch let error as ProxyEngineError {
-            presentError(message: error.message)
-        } catch {
-            presentError(message: "Failed to install \(ProxyCLIInstaller.shimPath): \(error.localizedDescription)\n\nCreate /usr/local/bin with sudo or run `JMacTool install-cli` from a shell with the right permissions.")
-        }
     }
 }

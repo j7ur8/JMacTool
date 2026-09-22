@@ -33,13 +33,4 @@ final class ProxyShellCommandsTests: XCTestCase {
     func testShellQuoteEscapesSingleQuotes() {
         XCTAssertEqual(ProxyShellCommands.shellQuote("it's"), "'it'\\''s'")
     }
-
-    func testCLIInstallerShimShape() throws {
-        let content = ProxyCLIInstaller.shimContent(executablePath: "/Applications/JMacTool.app/Contents/MacOS/JMacTool")
-        XCTAssertEqual(content, """
-        #!/bin/zsh
-        exec '/Applications/JMacTool.app/Contents/MacOS/JMacTool' "$@"
-
-        """)
-    }
 }
