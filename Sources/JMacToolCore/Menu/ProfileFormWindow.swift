@@ -77,6 +77,54 @@ final class ProfileFormWindow: NSWindow, NSWindowDelegate {
         _ = makeFirstResponder(nameField)
     }
 
+    // MARK: - Editing key equivalents
+
+    /// Maps the standard editing shortcuts (⌘X/⌘C/⌘V/⌘A) to the
+    /// responder-chain selectors that perform them.
+    ///
+    /// The app never installs `NSApp.mainMenu` (the status item owns its own
+    /// menu), so there is no Edit menu for AppKit to route these through and
+    /// the fields would otherwise ignore them. Anything not mapped here —
+    /// Return, Escape, ⌘←/⌘⌫ key bindings, and modified variants such as
+    /// ⇧⌘C — keeps its normal AppKit handling.
+    static func editingSelector(for event: NSEvent) -> Selector? {
+        guard event.type == .keyDown else {
+            return nil
+        }
+
+        // Caps Lock and the numeric-pad/function flags do not change which
+        // command the user means, so drop them; every remaining modifier must
+        // be Command alone, which leaves ⌘⇧C, ⌥⌘V and ⌃⌘A to AppKit.
+        let flags = event.modifierFlags
+            .intersection(.deviceIndependentFlagsMask)
+            .subtracting([.capsLock, .numericPad, .function])
+        guard flags == .command else {
+            return nil
+        }
+
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "x": return #selector(NSText.cut(_:))
+        case "c": return #selector(NSText.copy(_:))
+        case "v": return #selector(NSText.paste(_:))
+        case "a": return #selector(NSText.selectAll(_:))
+        default: return nil
+        }
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        // Dispatch down this window's responder chain exactly like an
+        // Edit-menu item would after AppKit picked the key window, so the
+        // focused field editor performs the edit. Starting from the window's
+        // own first responder keeps the dispatch testable without a key
+        // window. Unmapped or unhandled events fall back to AppKit so Save
+        // (Return), Cancel (Escape) and the key bindings keep working.
+        if let selector = Self.editingSelector(for: event),
+           (firstResponder ?? self).tryToPerform(selector, with: self) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     /// Runs the stored save handler with the trimmed field values. Shared by
     /// the Save button and by tests.
     func commit() {
