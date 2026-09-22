@@ -158,8 +158,11 @@ The CLI is the same binary, so `dist/JMacTool.app/Contents/MacOS/JMacTool list -
 
 ### Installing a Release
 
-Download `JMacTool-<tag>-macos.zip` from [Releases](https://github.com/j7ur8/JMacTool/releases), unpack it, and move `JMacTool.app` to `/Applications`. The binaries are ad-hoc signed, so macOS Gatekeeper may block the first launch — right-click the app and choose **Open** once, or clear the quarantine flag:
+Download `JMacTool-<tag>-macos.zip` from [Releases](https://github.com/j7ur8/JMacTool/releases), unpack it, and move `JMacTool.app` to `/Applications`. The binaries are signed with the self-signed `JMacTool Local` certificate and are not notarized, so Gatekeeper blocks the first launch (the error surfaces as `-10810` when launched with `open`). The reliable bypass is clearing the quarantine flag that the downloaded zip carries:
 
 ```bash
 xattr -cr /Applications/JMacTool.app
+open /Applications/JMacTool.app
 ```
+
+Alternatively, launch once via **System Settings → Privacy & Security → Open Anyway**. The right-click → **Open** bypass was removed in macOS 15. This is only needed on first install; in-app updates download without the quarantine flag, so Gatekeeper never sees them.
