@@ -14,6 +14,15 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 EXECUTABLE_PATH="$MACOS_DIR/$APP_NAME"
 INFO_TEMPLATE_PATH="$ROOT_DIR/App/Info.plist.template"
 
+# Slices baked into the bundle. The default keeps Apple silicon and Intel Macs
+# on their native architecture; set JMACTOOL_ARCHS to a single arch for faster
+# local iteration (for example `JMACTOOL_ARCHS=arm64 ./build.sh`).
+ARCH_LIST="${JMACTOOL_ARCHS:-arm64 x86_64}"
+ARCH_FLAGS=()
+for arch in ${=ARCH_LIST}; do
+  ARCH_FLAGS+=(--arch "$arch")
+done
+
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR"
 mkdir -p "$SWIFT_BUILD_HOME" "$SWIFT_SCRATCH_DIR" "$CLANG_MODULE_CACHE_PATH"
@@ -25,7 +34,7 @@ env \
   --disable-sandbox \
   --scratch-path "$SWIFT_SCRATCH_DIR" \
   -c release \
-  --arch arm64 --arch x86_64 \
+  "${ARCH_FLAGS[@]}" \
   --product "$APP_NAME"
 
 BIN_DIR="$(
@@ -36,7 +45,7 @@ BIN_DIR="$(
     --disable-sandbox \
     --scratch-path "$SWIFT_SCRATCH_DIR" \
     -c release \
-    --arch arm64 --arch x86_64 \
+    "${ARCH_FLAGS[@]}" \
     --show-bin-path
 )"
 
@@ -50,7 +59,15 @@ mkdir -p "$RESOURCES_DIR"
 swift "$ROOT_DIR/Scripts/build-app-icon.swift" "$ICONSET_DIR"
 iconutil -c icns "$ICONSET_DIR" -o "$RESOURCES_DIR/AppIcon.icns"
 
-lipo -info "$EXECUTABLE_PATH"
+# Fail loudly instead of shipping a thin binary: an app missing its arm64 slice
+# would silently run under Rosetta 2 on Apple silicon Macs.
+for arch in ${=ARCH_LIST}; do
+  if ! lipo "$EXECUTABLE_PATH" -verify_arch "$arch" >/dev/null 2>&1; then
+    echo "error: $EXECUTABLE_PATH is missing the '$arch' slice" >&2
+    exit 1
+  fi
+done
+echo "Architectures: $(lipo -archs "$EXECUTABLE_PATH")"
 
 # Sign with the stable self-signed identity when available so TCC
 # permissions survive app updates; fall back to ad-hoc otherwise.

@@ -7,7 +7,7 @@ A single macOS menu bar utility that bundles everyday power tools:
 - **Option+IJKL → Arrow Keys** — system-wide arrow-key navigation on the letter keys (Option+N/M jump by word), a built-in replacement for the common Karabiner rule.
 - **Proxy** — a native port of [jpmanager](https://github.com/j7ur8/jpmanager): manage proxy profiles and apply them to npm, git, pip, curl, wget, yarn, maven, gradle, conda, go, your zsh environment, and the macOS system proxy. Fully compatible with existing `~/.jpmanager` data.
 
-Requires macOS 13+. Build with Swift Package Manager (`swift build`, `./build.sh` for the app bundle).
+Requires macOS 13+. Build with Swift Package Manager (`swift build`, `./build.sh` for the app bundle). The bundle is universal: Apple silicon Macs run the native arm64 slice, Intel Macs the x86_64 one.
 
 ## Updates
 
@@ -144,7 +144,9 @@ swift test             # run the test suite
 ./build.sh             # signed dist/JMacTool.app (universal binary: arm64 + x86_64)
 ```
 
-The CLI lives in the same binary, so `dist/JMacTool.app/Contents/MacOS/JMacTool list --json` works from a shell as well.
+`./build.sh` cross-compiles both slices and aborts if the bundle ends up missing one, so Apple silicon Macs never silently fall back to Rosetta 2. To build a subset while iterating locally, set `JMACTOOL_ARCHS`, e.g. `JMACTOOL_ARCHS=arm64 ./build.sh`.
+
+The CLI is the same binary, so `dist/JMacTool.app/Contents/MacOS/JMacTool list --json` runs the commands above straight from a build.
 
 ### Installing a Release
 
