@@ -18,6 +18,43 @@ enum ExpectedState {
             .map { ($0, normalizedActual[$0], normalizedExpected[$0]) }
     }
 
+    /// Target-aware comparison, used by the dashboard alias and by
+    /// `JMacTool test`.
+    ///
+    /// Only the macOS system proxy is relaxed: macOS and whichever client flips
+    /// the system proxy (Clash Verge writes 127.0.0.1, 192.168.0.0/16,
+    /// 10.0.0.0/8, 172.16.0.0/12, localhost, *.local, <local>) inject their own
+    /// bypass domains, so a profile only has to have its own entries honored
+    /// instead of matching the list exactly. Endpoints stay exact.
+    static func diff(
+        for target: ProxyTargetDefinition,
+        actual: ProxyState,
+        expected: ProxyState
+    ) -> [(key: ProxyStateKey, actual: String, expected: String)] {
+        let mismatches = diff(actual: actual, expected: expected)
+        guard target.expected == "system-proxy" else {
+            return mismatches
+        }
+
+        return mismatches.filter { mismatch in
+            mismatch.key != .noProxy || !bypassDomainsHonored(actual: actual.noProxy, expected: expected.noProxy)
+        }
+    }
+
+    /// True when every bypass domain the profile asks for is present in the
+    /// system list. Profiles without `no_proxy` match any list because they say
+    /// nothing about bypassing, and extra entries are ignored because macOS and
+    /// the proxy client own them.
+    static func bypassDomainsHonored(actual: String, expected: String) -> Bool {
+        let expectedDomains = SystemProxy.bypassDomainList(expected).map { $0.lowercased() }
+        guard !expectedDomains.isEmpty else {
+            return true
+        }
+
+        let actualDomains = Set(SystemProxy.bypassDomainList(actual).map { $0.lowercased() })
+        return expectedDomains.allSatisfy(actualDomains.contains)
+    }
+
     static func build(for target: ProxyTargetDefinition, state: ProxyState) -> ProxyState {
         switch target.expected {
         case "single-url":

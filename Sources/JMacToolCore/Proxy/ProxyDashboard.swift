@@ -62,6 +62,7 @@ enum ProxyDashboard {
     ) -> StoredProfile? {
         profiles.first { stored in
             ExpectedState.diff(
+                for: target.definition,
                 actual: currentState,
                 expected: target.expectedState(for: stored.state)
             ).isEmpty

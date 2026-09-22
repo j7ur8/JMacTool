@@ -135,7 +135,11 @@ enum ProxyOperations {
         let stored = try findProxyProfileByName(context: context, profileName: profileName)
 
         let current = selection.target.currentState()
-        let mismatches = ExpectedState.diff(actual: current, expected: selection.target.expectedState(for: stored.state))
+        let mismatches = ExpectedState.diff(
+            for: selection.target.definition,
+            actual: current,
+            expected: selection.target.expectedState(for: stored.state)
+        )
 
         return TestResult(
             selection: selection,
