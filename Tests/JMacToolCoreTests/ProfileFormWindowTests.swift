@@ -28,7 +28,8 @@ final class ProfileFormWindowTests: XCTestCase {
         XCTAssertEqual(window.fields.socks5Proxy, "socks5://127.0.0.1:7890")
         XCTAssertEqual(window.fields.noProxy, "localhost,127.0.0.1")
 
-        // Re-targeting back to "add" must clear the previously edited values.
+        // Re-targeting back to "add" must clear the previously edited values
+        // and restore the no_proxy default.
         window.present(existing: nil, onSave: { _ in })
 
         XCTAssertEqual(window.title, "Add Proxy Profile")
@@ -36,7 +37,7 @@ final class ProfileFormWindowTests: XCTestCase {
         XCTAssertEqual(window.fields.httpProxy, "")
         XCTAssertEqual(window.fields.httpsProxy, "")
         XCTAssertEqual(window.fields.socks5Proxy, "")
-        XCTAssertEqual(window.fields.noProxy, "")
+        XCTAssertEqual(window.fields.noProxy, "localhost,127.0.0.1")
     }
 
     @MainActor

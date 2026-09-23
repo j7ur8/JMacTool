@@ -70,7 +70,9 @@ final class ProfileFormWindow: NSWindow, NSWindowDelegate {
             httpProxy: "",
             httpsProxy: "",
             socks5Proxy: "",
-            noProxy: ""
+            // A sane bypass list most profiles want; edit always refills the
+            // stored value instead.
+            noProxy: "localhost,127.0.0.1"
         )
         self.onSave = onSave
         // Focus the name field so the form is typeable the moment it appears.
