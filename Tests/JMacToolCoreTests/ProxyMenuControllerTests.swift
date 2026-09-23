@@ -49,11 +49,13 @@ final class ProxyMenuControllerTests: XCTestCase {
             XCTFail("Launch at Login is missing")
         }
         // Managed apps are rendered as top-level items, one per built-in
-        // target except the dashboard-hidden zsh alias.
+        // target except the dashboard-hidden zsh alias. App rows carry an
+        // attributed two-column title ("app\talias"), so AppKit mirrors that
+        // plain text back into `title`.
         for app in ["environment", "conda", "curl", "git", "go", "gradle", "maven", "npm", "pip", "system", "wget", "yarn"] {
-            XCTAssertTrue(titles.contains { $0.hasPrefix("\(app):") }, "missing app item: \(app)")
+            XCTAssertTrue(titles.contains { $0.hasPrefix("\(app)\t") }, "missing app item: \(app)")
         }
-        XCTAssertFalse(titles.contains { $0.hasPrefix("zsh:") })
+        XCTAssertFalse(titles.contains { $0.hasPrefix("zsh\t") })
         // Empty store shows the hint and no profile rows.
         XCTAssertTrue(titles.contains("No proxy profiles saved yet"))
     }
@@ -77,7 +79,7 @@ final class ProxyMenuControllerTests: XCTestCase {
 
         let (_, menu) = makeInstalledMenu()
 
-        let npmItem = try XCTUnwrap(menu.items.first { $0.title.hasPrefix("npm:") })
+        let npmItem = try XCTUnwrap(menu.items.first { $0.title.hasPrefix("npm\t") })
         let npmSubmenu = try XCTUnwrap(npmItem.submenu)
         XCTAssertTrue(npmSubmenu.items.contains { $0.title == "None" })
         XCTAssertTrue(npmSubmenu.items.contains { $0.title == "office" })
@@ -111,6 +113,8 @@ final class ProxyMenuControllerTests: XCTestCase {
         XCTAssertTrue(fire(addItem))
         let window = try XCTUnwrap(controller.profileFormWindow)
         XCTAssertEqual(window.title, "Add Proxy Profile")
+        // A new profile starts with a sane no_proxy default.
+        XCTAssertEqual(window.fields.noProxy, "localhost,127.0.0.1")
 
         // Clicking Add again (the reported duplicate-window bug) must reuse the
         // window that is already open.
