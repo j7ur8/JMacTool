@@ -76,4 +76,23 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertFalse(AppUpdater.requirement(hashForm, carriesIdentityHash: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"))
         XCTAssertFalse(AppUpdater.requirement("", carriesIdentityHash: hash))
     }
+
+    func testShouldBypassProxyForStatus() {
+        // Success and redirect statuses describe the request itself; retrying
+        // direct would only duplicate them.
+        XCTAssertFalse(ProxyAwareSession.shouldBypassProxyForStatus(200))
+        XCTAssertFalse(ProxyAwareSession.shouldBypassProxyForStatus(304))
+
+        // Client/server errors received through the proxy path deserve a
+        // direct attempt: e.g. GitHub answers 403 to rate-limited proxy exit
+        // IPs while a direct connection succeeds.
+        XCTAssertTrue(ProxyAwareSession.shouldBypassProxyForStatus(400))
+        XCTAssertTrue(ProxyAwareSession.shouldBypassProxyForStatus(403))
+        XCTAssertTrue(ProxyAwareSession.shouldBypassProxyForStatus(429))
+        XCTAssertTrue(ProxyAwareSession.shouldBypassProxyForStatus(500))
+        XCTAssertTrue(ProxyAwareSession.shouldBypassProxyForStatus(599))
+
+        XCTAssertFalse(ProxyAwareSession.shouldBypassProxyForStatus(399))
+        XCTAssertFalse(ProxyAwareSession.shouldBypassProxyForStatus(600))
+    }
 }
