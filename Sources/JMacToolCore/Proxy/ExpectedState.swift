@@ -69,6 +69,8 @@ enum ExpectedState {
             return gradle(state)
         case "conda":
             return CondaConfig.expectedState(state)
+        case "orbstack-docker":
+            return DockerJSONConfig.expectedState(state)
         case "go":
             return go(state)
         case "system-proxy":

@@ -149,6 +149,32 @@ final class ProxyOperationsTests: XCTestCase {
         }
     }
 
+    func testSetAndTestOrbStackDocker() throws {
+        try saveOfficeProfile()
+
+        let result = try ProxyOperations.configureAppWithProfile(context: context, appName: "orbstack-docker", profileName: "office")
+        XCTAssertEqual(result.selection.canonicalName, "orbstack-docker")
+
+        let configPath = homeDirectory + "/.orbstack/config/docker.json"
+        let config = try String(contentsOfFile: configPath, encoding: .utf8)
+        XCTAssertTrue(config.contains("http-proxy"))
+        XCTAssertTrue(config.contains("http://127.0.0.1:7890"))
+        XCTAssertTrue(config.contains("localhost,127.0.0.1"))
+
+        let test = try ProxyOperations.testAppProfile(context: context, appName: "orbstack-docker", profileName: "office")
+        XCTAssertTrue(test.mismatches.isEmpty)
+
+        let clearResult = try ProxyOperations.clearAppProxy(context: context, appName: "orbstack-docker", force: false)
+        XCTAssertFalse(clearResult.aborted)
+        let cleared = try String(contentsOfFile: configPath, encoding: .utf8)
+        XCTAssertFalse(cleared.contains("proxies"))
+    }
+
+    func testUnsetOrbStackDockerWithoutConfigCreatesNothing() throws {
+        _ = try ProxyOperations.clearAppProxy(context: context, appName: "orbstack-docker", force: false)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: homeDirectory + "/.orbstack"))
+    }
+
     func testUserTargetOverrideMergesBuiltin() throws {
         let targetsDirectory = context.userTargetsDirectory
         try FileManager.default.createDirectory(atPath: targetsDirectory, withIntermediateDirectories: true)

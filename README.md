@@ -68,6 +68,7 @@ profile:
 | `yarn` | `~/.yarnrc` | |
 | `conda` | `~/.condarc` | `proxy_servers` section |
 | `go` | `~/.config/go/env` | `HTTP_PROXY`, `ALL_PROXY`, ... |
+| `orbstack-docker` | `~/.orbstack/config/docker.json` | Docker daemon `proxies` section; OrbStack applies changes automatically |
 | `system` | macOS Network Proxies | applies via `networksetup` on the default-route service; `no_proxy` becomes the bypass domain list |
 
 Extra file-backed targets (or overrides of the built-ins, merged by `name`) can be added in `~/.jpmanager/targets/<target-name>.yaml`:
@@ -81,7 +82,7 @@ target:
   handler: ini-root
 ```
 
-Supported v1 handlers: `ini-root`, `ini-section`, `managed-shell-env`, `line-kv`, `yarnrc`, `maven-settings`, `condarc-proxy-servers`, `system-proxy`.
+Supported v1 handlers: `ini-root`, `ini-section`, `managed-shell-env`, `line-kv`, `yarnrc`, `maven-settings`, `condarc-proxy-servers`, `docker-json`, `system-proxy`.
 
 ### Commands
 

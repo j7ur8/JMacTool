@@ -33,6 +33,7 @@ enum ProxyTargetRegistry {
         "yarnrc",
         "maven-settings",
         "condarc-proxy-servers",
+        "docker-json",
         "system-proxy"
     ]
 
@@ -173,6 +174,15 @@ enum ProxyTargetRegistry {
             proxy: ""
             https-proxy: ""
           expected: http-https
+        """),
+        ("orbstack-docker.yaml", """
+        version: 1
+        target:
+          name: orbstack-docker
+          wayLabel: ~/.orbstack/config/docker.json
+          path: ~/.orbstack/config/docker.json
+          handler: docker-json
+          expected: orbstack-docker
         """),
         ("pip.yaml", """
         version: 1

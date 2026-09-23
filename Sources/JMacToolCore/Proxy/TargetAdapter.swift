@@ -54,6 +54,9 @@ enum TargetAdapter {
         case "condarc-proxy-servers":
             return CondaConfig.currentState(content: context.readTextFile(target.path))
 
+        case "docker-json":
+            return DockerJSONConfig.currentState(content: context.readTextFile(target.path))
+
         case "system-proxy":
             return SystemProxy.currentState(run: context.runCommand)
 
@@ -109,6 +112,9 @@ enum TargetAdapter {
 
         case "condarc-proxy-servers":
             context.writeTextFile(target.path, CondaConfig.upsert(content: context.readTextFile(target.path), state: state))
+
+        case "docker-json":
+            context.writeTextFile(target.path, DockerJSONConfig.upsert(content: context.readTextFile(target.path), state: state))
 
         case "system-proxy":
             try SystemProxy.apply(state, run: context.runCommand)
@@ -169,6 +175,13 @@ enum TargetAdapter {
 
         case "condarc-proxy-servers":
             let nextContent = CondaConfig.upsert(content: context.readTextFile(target.path), state: empty)
+            context.syncTextFile(target.path, nextContent)
+
+        case "docker-json":
+            guard context.fileExists(target.path) else {
+                return
+            }
+            let nextContent = DockerJSONConfig.upsert(content: context.readTextFile(target.path), state: empty)
             context.syncTextFile(target.path, nextContent)
 
         case "system-proxy":
