@@ -65,9 +65,13 @@ final class ProxyMenuController: NSObject {
         if profiles.isEmpty {
             items.append(disabledItem("No proxy profiles saved yet"))
         }
+        let menuFont = NSFont.menuFont(ofSize: 0)
+        let maxNameWidth = data.apps.map { textWidth($0.name, font: menuFont) }.max() ?? 0
+        let maxAliasWidth = data.apps.map { textWidth($0.alias, font: menuFont) }.max() ?? 0
+        let tabLocation = maxNameWidth + maxAliasWidth + 24
         for app in data.apps {
-            let item = NSMenuItem(title: app.name, action: nil, keyEquivalent: "")
-            item.view = ManagedAppMenuItemView(name: app.name, proxy: app.alias)
+            let item = NSMenuItem(title: "\(app.name): \(app.alias)", action: nil, keyEquivalent: "")
+            item.attributedTitle = appRowTitle(left: app.name, right: app.alias, tabLocation: tabLocation, font: menuFont)
             item.submenu = makeAppSubmenu(app: app, profiles: profiles)
             items.append(item)
         }
@@ -97,6 +101,25 @@ final class ProxyMenuController: NSObject {
         let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
         item.isEnabled = false
         return item
+    }
+
+    /// Renders an app row as a two-column layout: the app name on the left and
+    /// the active proxy pushed to a right-aligned column. No explicit foreground
+    /// color so AppKit keeps its normal selected-item highlighting.
+    private func appRowTitle(left: String, right: String, tabLocation: CGFloat, font: NSFont) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.tabStops = [NSTextTab(textAlignment: .right, location: tabLocation)]
+
+        let text = NSMutableAttributedString(string: "\(left)\t\(right)")
+        text.addAttributes(
+            [.font: font, .paragraphStyle: paragraph],
+            range: NSRange(location: 0, length: text.length)
+        )
+        return text
+    }
+
+    private func textWidth(_ string: String, font: NSFont) -> CGFloat {
+        (string as NSString).size(withAttributes: [.font: font]).width
     }
 
     private func disabledItem(_ title: String) -> NSMenuItem {
