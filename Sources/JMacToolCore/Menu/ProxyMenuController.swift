@@ -132,7 +132,6 @@ final class ProxyMenuController: NSObject {
         let submenu = NSMenu()
         submenu.autoenablesItems = false
 
-        submenu.addItem(disabledItem("Proxy: \(app.proxyDisplay)"))
         submenu.addItem(disabledItem("Method: \(app.method.label)"))
         if !app.usedBy.isEmpty {
             submenu.addItem(disabledItem("Used by: \(app.usedBy.joined(separator: ", "))"))
