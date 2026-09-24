@@ -49,13 +49,13 @@ final class ProxyMenuControllerTests: XCTestCase {
             XCTFail("Launch at Login is missing")
         }
         // Managed apps are rendered as top-level items, one per built-in
-        // target except the dashboard-hidden zsh alias. App rows carry an
-        // attributed two-column title ("app\talias"), so AppKit mirrors that
-        // plain text back into `title`.
+        // target except the dashboard-hidden zsh alias. Each row draws its
+        // two-column layout in a custom view, so the plain title only acts
+        // as the item's identifier.
         for app in ["environment", "conda", "curl", "git", "go", "gradle", "maven", "npm", "pip", "system", "wget", "yarn"] {
-            XCTAssertTrue(titles.contains { $0.hasPrefix("\(app)\t") }, "missing app item: \(app)")
+            XCTAssertTrue(titles.contains(app), "missing app item: \(app)")
         }
-        XCTAssertFalse(titles.contains { $0.hasPrefix("zsh\t") })
+        XCTAssertFalse(titles.contains("zsh"))
         // Empty store shows the hint and no profile rows.
         XCTAssertTrue(titles.contains("No proxy profiles saved yet"))
     }
@@ -79,7 +79,7 @@ final class ProxyMenuControllerTests: XCTestCase {
 
         let (_, menu) = makeInstalledMenu()
 
-        let npmItem = try XCTUnwrap(menu.items.first { $0.title.hasPrefix("npm\t") })
+        let npmItem = try XCTUnwrap(menu.items.first { $0.title == "npm" })
         let npmSubmenu = try XCTUnwrap(npmItem.submenu)
         XCTAssertTrue(npmSubmenu.items.contains { $0.title == "None" })
         XCTAssertTrue(npmSubmenu.items.contains { $0.title == "office" })
